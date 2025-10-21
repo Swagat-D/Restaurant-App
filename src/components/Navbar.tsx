@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,10 @@ import {
   StyleSheet,
   Dimensions,
   StatusBar,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import ProfileScreen from '../screens/ProfileScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -42,12 +44,16 @@ export default function Navbar({
   title, 
   showProfile = true 
 }: NavbarProps) {
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const greeting = getGreeting();
   const userName = formatEmail(userEmail);
 
   const handleProfilePress = () => {
-    // Handle profile logic here
-    console.log('Profile pressed');
+    setShowProfileModal(true);
+  };
+
+  const handleCloseProfile = () => {
+    setShowProfileModal(false);
   };
 
   return (
@@ -66,7 +72,6 @@ export default function Navbar({
             )}
           </View>
 
-          {/* Right Section */}
           <View style={styles.rightSection}>
             {showProfile && (
               <TouchableOpacity 
@@ -89,9 +94,27 @@ export default function Navbar({
           </View>
         </View>
 
-        {/* Bottom border with gradient effect */}
         <View style={styles.borderGradient} />
       </View>
+
+      {/* Profile Modal */}
+      <Modal
+        visible={showProfileModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={handleCloseProfile}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={handleCloseProfile} style={styles.closeButton}>
+              <Ionicons name="arrow-back" size={24} color="#000000" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Profile</Text>
+            <View style={styles.placeholder} />
+          </View>
+          <ProfileScreen />
+        </View>
+      </Modal>
     </>
   );
 }
@@ -100,19 +123,22 @@ const styles = StyleSheet.create({
   navbar: {
     backgroundColor: '#FFFFFF',
     paddingTop: height * 0.05,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
-    elevation: 8,
+    elevation: 15,
     zIndex: 1000,
+    marginBottom: 10,
   },
   navbarContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: width * 0.05,
-    paddingBottom: height * 0.02,
+    paddingBottom: height * 0.025,
   },
   leftSection: {
     flex: 1,
@@ -131,36 +157,41 @@ const styles = StyleSheet.create({
   userNameText: {
     fontSize: responsiveFontSize(20),
     fontWeight: 'bold',
-    color: '#000000',
+    color: '#2C2C2C',
   },
   titleText: {
     fontSize: responsiveFontSize(22),
     fontWeight: 'bold',
-    color: '#000000',
+    color: '#2C2C2C',
   },
   iconButton: {
-    width: width * 0.1,
-    height: width * 0.1,
+    width: width * 0.11,
+    height: width * 0.11,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#F8F8F8',
-    borderRadius: width * 0.05,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#F0F0F0',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
   },
 
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: '#2C2C2C',
     paddingHorizontal: width * 0.04,
     paddingVertical: height * 0.012,
-    borderRadius: 12,
-    shadowColor: '#000000',
+    borderRadius: 16,
+    shadowColor: '#2C2C2C',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.25,
     shadowRadius: 6,
-    elevation: 4,
+    elevation: 6,
     gap: width * 0.02,
   },
 
@@ -170,8 +201,32 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   borderGradient: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-    opacity: 0.5,
+    height: 0,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: width * 0.05,
+    paddingTop: height * 0.06,
+    paddingBottom: height * 0.02,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  closeButton: {
+    padding: 8,
+  },
+  modalTitle: {
+    fontSize: responsiveFontSize(20),
+    fontWeight: 'bold',
+    color: '#000000',
+  },
+  placeholder: {
+    width: 40,
   },
 });

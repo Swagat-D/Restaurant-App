@@ -8,6 +8,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import NewOrderScreen from './NewOrderScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -69,7 +70,12 @@ const RecentOrder = ({ orderId, table, items, amount, status, time }: RecentOrde
   </View>
 );
 
-export default function OverviewScreen() {
+
+interface OverviewScreenProps {
+  onNewOrder?: () => void;
+}
+
+export default function OverviewScreen({ onNewOrder }: OverviewScreenProps) {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Stats Cards */}
@@ -87,7 +93,7 @@ export default function OverviewScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Quick Actions</Text>
         <View style={styles.actionGrid}>
-          <TouchableOpacity style={styles.actionCard}>
+          <TouchableOpacity style={styles.actionCard} onPress={onNewOrder} activeOpacity={0.8}>
             <Ionicons name="add-circle-outline" size={24} color="#FFFFFF" />
             <Text style={styles.actionTitle}>New Order</Text>
             <Text style={styles.actionSubtitle}>Take order manually</Text>

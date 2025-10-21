@@ -18,9 +18,10 @@ const { width, height } = Dimensions.get('window');
 
 interface TabComponentProps {
   onTabChange?: (tabIndex: number) => void;
+  onNewOrder?: () => void;
 }
 
-export default function TabComponent({ onTabChange }: TabComponentProps) {
+export default function TabComponent({ onTabChange, onNewOrder }: TabComponentProps) {
   const [activeTab, setActiveTab] = useState(0);
 
   const tabs = [
@@ -40,7 +41,7 @@ export default function TabComponent({ onTabChange }: TabComponentProps) {
   const renderScreen = () => {
     switch (activeTab) {
       case 0:
-        return <OverviewScreen />;
+        return <OverviewScreen onNewOrder={onNewOrder} />;
       case 1:
         return <OrdersScreen />;
       case 2:
@@ -48,7 +49,7 @@ export default function TabComponent({ onTabChange }: TabComponentProps) {
       case 3:
         return <AnalyticsScreen />;
       default:
-        return <OverviewScreen />;
+        return <OverviewScreen onNewOrder={onNewOrder} />;
     }
   };
 
@@ -71,8 +72,8 @@ export default function TabComponent({ onTabChange }: TabComponentProps) {
           >
             <Ionicons
               name={activeTab === tab.id ? tab.iconActive : tab.iconInactive as any}
-              size={24}
-              color={activeTab === tab.id ? '#000000' : '#888888'}
+              size={activeTab === tab.id ? 24 : 22}
+              color={activeTab === tab.id ? '#2C2C2C' : '#CCCCCC'}
             />
             <Text style={[
               styles.tabLabel,
@@ -103,37 +104,44 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#2C2C2C',
     paddingVertical: height * 0.015,
-    paddingHorizontal: width * 0.02,
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
+    paddingHorizontal: width * 0.05,
+    borderTopLeftRadius: 25,
+    borderTopRightRadius: 25,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 10,
-    paddingBottom: height * 0.025,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 15,
+    marginTop: -10,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: height * 0.012,
+    paddingVertical: height * 0.008,
     paddingHorizontal: width * 0.02,
-    borderRadius: 8,
+    borderRadius: 16,
+    minHeight: height * 0.055,
   },
   activeTab: {
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#FFFFFF',
+    transform: [{ scale: 1.05 }],
+    shadowColor: '#FFFFFF',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
   },
   tabLabel: {
-    fontSize: responsiveFontSize(11),
-    color: '#888888',
+    fontSize: responsiveFontSize(10),
+    color: '#CCCCCC',
     marginTop: height * 0.005,
     fontWeight: '500',
   },
   activeTabLabel: {
-    color: '#000000',
-    fontWeight: '600',
+    color: '#2C2C2C',
+    fontWeight: '700',
   },
 });

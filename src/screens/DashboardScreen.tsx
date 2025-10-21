@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Navbar from '../components/Navbar';
 import TabComponent from '../components/TabComponent';
+import NewOrderScreen from './NewOrderScreen';
 
 interface DashboardScreenProps {
   userEmail: string;
@@ -9,6 +10,20 @@ interface DashboardScreenProps {
 }
 
 export default function DashboardScreen({ userEmail, onLogout }: DashboardScreenProps) {
+  const [showNewOrder, setShowNewOrder] = useState(false);
+
+  const handleNewOrder = () => {
+    setShowNewOrder(true);
+  };
+
+  const handleBackToDashboard = () => {
+    setShowNewOrder(false);
+  };
+
+  if (showNewOrder) {
+    return <NewOrderScreen onBack={handleBackToDashboard} />;
+  }
+
   return (
     <View style={styles.container}>
       <Navbar 
@@ -16,7 +31,7 @@ export default function DashboardScreen({ userEmail, onLogout }: DashboardScreen
         onLogout={onLogout} 
         showProfile={true}
       />
-      <TabComponent />
+      <TabComponent onNewOrder={handleNewOrder} />
     </View>
   );
 }
