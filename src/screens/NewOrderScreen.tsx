@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Modal, FlatList, Image, StatusBar, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Modal, FlatList, Image, StatusBar, TextInput, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import OrderReviewScreen from './OrderReviewScreen';
+import { useOrders } from '../context/OrderContext';
 
 const { width, height } = Dimensions.get('window');
+
+interface GuestInfo {
+  name: string;
+  whatsapp: string;
+}
 
 interface NewOrderScreenProps {
   onBack?: () => void;
@@ -50,7 +56,10 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
   const [specialInstructions, setSpecialInstructions] = useState<{[key: string]: string}>({});
   const [searchText, setSearchText] = useState('');
   const [showReview, setShowReview] = useState(false);
+  const [guestInfo, setGuestInfo] = useState<GuestInfo>({ name: '', whatsapp: '' });
+  const [showGuestInfoModal, setShowGuestInfoModal] = useState(false);
 
+  const { addOrder } = useOrders();
   const orderNumber = `ORD${Date.now().toString().slice(-4)}`;
 
   // Mock table data
@@ -139,6 +148,20 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
     });
   };
 
+  const handlePlaceOrder = () => {
+    if (!selectedTable) return;
+    setShowGuestInfoModal(true);
+  };
+
+  const confirmGuestInfo = () => {
+    if (!guestInfo.name.trim()) {
+      // Could add validation here
+      return;
+    }
+    setShowGuestInfoModal(false);
+    setShowReview(true);
+  };
+
   const getTotalItems = () => {
     return Object.values(orderItems).reduce((sum, count) => sum + count, 0);
   };
@@ -215,7 +238,57 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
         tableNumber={selectedTable}
         items={getReviewItems()}
         specialInstruction={specialInstruction}
-        onConfirm={() => {/* handle confirm logic here */ setShowReview(false); }}
+        guestInfo={guestInfo}
+        onConfirm={() => {
+          // Create order from current items
+          const reviewItems = getReviewItems();
+          const total = reviewItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+          
+          if (reviewItems.length === 0) {
+            Alert.alert('Error', 'Please add items to your order first.');
+            return;
+          }
+          
+          if (!selectedTable) {
+            Alert.alert('Error', 'Please select a table first.');
+            return;
+          }
+
+          addOrder({
+            orderNumber,
+            tableNumber: selectedTable,
+            items: reviewItems.map(item => ({
+              id: item.id,
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity,
+              instruction: item.instruction
+            })),
+            total,
+            status: 'preparing',
+            guestInfo: guestInfo
+          });
+
+          setOrderItems({});
+          setSpecialInstructions({});
+          setSpecialInstruction('');
+          setSelectedTable('');
+          setGuestInfo({ name: '', whatsapp: '' });
+          setShowReview(false);
+          
+          Alert.alert(
+            'Order Confirmed!', 
+            `Order ${orderNumber} has been placed successfully.`,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  if (onBack) onBack();
+                }
+              }
+            ]
+          );
+        }}
         onEdit={(itemId, newQuantity, newInstruction) => {
           // Update quantity
           setOrderItems(prev => ({
@@ -389,7 +462,7 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
             <TouchableOpacity 
               style={[styles.orderButton, !selectedTable && styles.disabledButton]}
               disabled={!selectedTable}
-              onPress={() => setShowReview(true)}
+              onPress={handlePlaceOrder}
             >
               <Text style={styles.orderButtonText}>Place Order</Text>
             </TouchableOpacity>
@@ -425,6 +498,65 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
             ))}
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Guest Info Modal */}
+      <Modal
+        visible={showGuestInfoModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowGuestInfoModal(false)}
+      >
+        <View style={styles.instructionOverlay}>
+          <View style={styles.instructionModal}>
+            <Text style={styles.instructionTitle}>Guest Information</Text>
+            <Text style={styles.instructionSubtitle}>Please provide guest details for the order</Text>
+            
+            <View style={styles.guestInfoContainer}>
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>Guest Name *</Text>
+                <TextInput
+                  style={styles.guestInput}
+                  placeholder="Enter guest name"
+                  placeholderTextColor="#999"
+                  value={guestInfo.name}
+                  onChangeText={(text) => setGuestInfo(prev => ({ ...prev, name: text }))}
+                />
+              </View>
+              
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>WhatsApp Number (Optional)</Text>
+                <TextInput
+                  style={styles.guestInput}
+                  placeholder="Enter WhatsApp number"
+                  placeholderTextColor="#999"
+                  value={guestInfo.whatsapp}
+                  onChangeText={(text) => setGuestInfo(prev => ({ ...prev, whatsapp: text }))}
+                  keyboardType="phone-pad"
+                />
+              </View>
+            </View>
+            
+            <View style={styles.instructionButtonRow}>
+              <TouchableOpacity 
+                style={styles.instructionSkipButton} 
+                onPress={() => setShowGuestInfoModal(false)}
+              >
+                <Text style={styles.instructionSkipText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[
+                  styles.instructionConfirmButton,
+                  !guestInfo.name.trim() && styles.disabledButton
+                ]} 
+                onPress={confirmGuestInfo}
+                disabled={!guestInfo.name.trim()}
+              >
+                <Text style={styles.instructionConfirmText}>Continue</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -751,6 +883,7 @@ const styles = StyleSheet.create({
   orderSummary: {
     backgroundColor: '#FFFFFF',
     padding: width * 0.05,
+    marginBottom: 8,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     shadowColor: '#000000',
@@ -828,5 +961,26 @@ const styles = StyleSheet.create({
     fontSize: responsiveFontSize(12),
     color: '#666666',
     marginTop: 2,
+  },
+  guestInfoContainer: {
+    width: '100%',
+    marginBottom: 18,
+  },
+  inputContainer: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: responsiveFontSize(14),
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+  },
+  guestInput: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: responsiveFontSize(14),
+    color: '#333',
+    minHeight: 48,
   },
 });

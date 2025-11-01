@@ -12,7 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import OverviewScreen from '../screens/OverviewScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import MenuScreen from '../screens/MenuScreen';
-import AnalyticsScreen from '../screens/AnalyticsScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,7 +27,6 @@ export default function TabComponent({ onTabChange, onNewOrder }: TabComponentPr
     { id: 0, title: 'Overview', iconActive: 'home', iconInactive: 'home-outline' },
     { id: 1, title: 'Orders', iconActive: 'receipt', iconInactive: 'receipt-outline' },
     { id: 2, title: 'Menu', iconActive: 'restaurant', iconInactive: 'restaurant-outline' },
-    { id: 3, title: 'Analytics', iconActive: 'bar-chart', iconInactive: 'bar-chart-outline' },
   ] as const;
 
   const handleTabPress = (tabIndex: number) => {
@@ -46,8 +44,6 @@ export default function TabComponent({ onTabChange, onNewOrder }: TabComponentPr
         return <OrdersScreen />;
       case 2:
         return <MenuScreen />;
-      case 3:
-        return <AnalyticsScreen />;
       default:
         return <OverviewScreen onNewOrder={onNewOrder} />;
     }

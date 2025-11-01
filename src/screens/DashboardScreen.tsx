@@ -3,6 +3,8 @@ import { View, StyleSheet } from 'react-native';
 import Navbar from '../components/Navbar';
 import TabComponent from '../components/TabComponent';
 import NewOrderScreen from './NewOrderScreen';
+import ProfileScreen from './ProfileScreen';
+import { useNavigationHeight } from '../hooks/useNavigationHeight';
 
 interface DashboardScreenProps {
   userEmail: string;
@@ -11,6 +13,8 @@ interface DashboardScreenProps {
 
 export default function DashboardScreen({ userEmail, onLogout }: DashboardScreenProps) {
   const [showNewOrder, setShowNewOrder] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const appHeight = useNavigationHeight();
 
   const handleNewOrder = () => {
     setShowNewOrder(true);
@@ -20,16 +24,37 @@ export default function DashboardScreen({ userEmail, onLogout }: DashboardScreen
     setShowNewOrder(false);
   };
 
+  const handleShowProfile = () => {
+    setShowProfile(true);
+  };
+
+  const handleBackFromProfile = () => {
+    setShowProfile(false);
+  };
+
   if (showNewOrder) {
-    return <NewOrderScreen onBack={handleBackToDashboard} />;
+    return (
+      <View style={[styles.container, { height: appHeight }]}>
+        <NewOrderScreen onBack={handleBackToDashboard} />
+      </View>
+    );
+  }
+
+  if (showProfile) {
+    return (
+      <View style={[styles.container, { height: appHeight }]}>
+        <ProfileScreen onBack={handleBackFromProfile} />
+      </View>
+    );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { height: appHeight }]}>
       <Navbar 
         userEmail={userEmail} 
         onLogout={onLogout} 
         showProfile={true}
+        onProfilePress={handleShowProfile}
       />
       <TabComponent onNewOrder={handleNewOrder} />
     </View>

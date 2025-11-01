@@ -23,13 +23,14 @@ interface OrderReviewScreenProps {
   tableNumber: string;
   items: ReviewItem[];
   specialInstruction?: string;
+  guestInfo?: { name: string; whatsapp: string };
   onConfirm: () => void;
   onEdit: (itemId: string, newQuantity: number, newInstruction?: string) => void;
   onDelete: (itemId: string) => void;
   onBack: () => void;
 }
 
-export default function OrderReviewScreen({ orderNumber, tableNumber, items, specialInstruction, onConfirm, onEdit, onDelete, onBack }: OrderReviewScreenProps) {
+export default function OrderReviewScreen({ orderNumber, tableNumber, items, specialInstruction, guestInfo, onConfirm, onEdit, onDelete, onBack }: OrderReviewScreenProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingItem, setEditingItem] = useState<ReviewItem | null>(null);
   const [editQuantity, setEditQuantity] = useState(1);
@@ -104,8 +105,30 @@ export default function OrderReviewScreen({ orderNumber, tableNumber, items, spe
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Order Items ({items.length})</Text>
-          {items.map((item) => renderItem({ item }))}
+          {items.map((item) => (
+            <View key={item.id}>
+              {renderItem({ item })}
+            </View>
+          ))}
         </View>
+
+        {guestInfo && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Guest Information</Text>
+            <View style={styles.guestInfoCard}>
+              <View style={styles.guestInfoRow}>
+                <Text style={styles.guestInfoLabel}>Name:</Text>
+                <Text style={styles.guestInfoValue}>{guestInfo.name}</Text>
+              </View>
+              {guestInfo.whatsapp && (
+                <View style={styles.guestInfoRow}>
+                  <Text style={styles.guestInfoLabel}>WhatsApp:</Text>
+                  <Text style={styles.guestInfoValue}>{guestInfo.whatsapp}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* ...existing code... */}
       </ScrollView>
@@ -466,5 +489,31 @@ const styles = StyleSheet.create({
     fontSize: responsiveFontSize(14),
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  guestInfoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  guestInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  guestInfoLabel: {
+    fontSize: responsiveFontSize(14),
+    fontWeight: '600',
+    color: '#666666',
+  },
+  guestInfoValue: {
+    fontSize: responsiveFontSize(14),
+    fontWeight: '500',
+    color: '#333333',
   },
 });

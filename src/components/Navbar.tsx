@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,8 @@ import {
   StyleSheet,
   Dimensions,
   StatusBar,
-  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import ProfileScreen from '../screens/ProfileScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -18,6 +16,7 @@ interface NavbarProps {
   onLogout: () => void;
   title?: string;
   showProfile?: boolean;
+  onProfilePress?: () => void;
 }
 
 const responsiveFontSize = (size: number) => {
@@ -42,18 +41,16 @@ export default function Navbar({
   userEmail, 
   onLogout, 
   title, 
-  showProfile = true 
+  showProfile = true,
+  onProfilePress 
 }: NavbarProps) {
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const greeting = getGreeting();
   const userName = formatEmail(userEmail);
 
   const handleProfilePress = () => {
-    setShowProfileModal(true);
-  };
-
-  const handleCloseProfile = () => {
-    setShowProfileModal(false);
+    if (onProfilePress) {
+      onProfilePress();
+    }
   };
 
   return (
@@ -96,25 +93,6 @@ export default function Navbar({
 
         <View style={styles.borderGradient} />
       </View>
-
-      {/* Profile Modal */}
-      <Modal
-        visible={showProfileModal}
-        animationType="slide"
-        transparent={false}
-        onRequestClose={handleCloseProfile}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={handleCloseProfile} style={styles.closeButton}>
-              <Ionicons name="arrow-back" size={24} color="#000000" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Profile</Text>
-            <View style={styles.placeholder} />
-          </View>
-          <ProfileScreen />
-        </View>
-      </Modal>
     </>
   );
 }
@@ -202,31 +180,5 @@ const styles = StyleSheet.create({
   },
   borderGradient: {
     height: 0,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: width * 0.05,
-    paddingTop: height * 0.06,
-    paddingBottom: height * 0.02,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  closeButton: {
-    padding: 8,
-  },
-  modalTitle: {
-    fontSize: responsiveFontSize(20),
-    fontWeight: 'bold',
-    color: '#000000',
-  },
-  placeholder: {
-    width: 40,
   },
 });

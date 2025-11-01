@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
+import { OrderProvider } from './src/context/OrderContext';
+import { useNavigationHeight } from './src/hooks/useNavigationHeight';
 
 const { width, height } = Dimensions.get('window');
 
@@ -16,6 +18,7 @@ const responsiveFontSize = (size: number) => {
 export default function App() {
   const [appState, setAppState] = useState<AppState>('splash');
   const [userEmail, setUserEmail] = useState('');
+  const appHeight = useNavigationHeight();
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -66,7 +69,7 @@ export default function App() {
 
   if (appState === 'splash') {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { height: appHeight }]}>
         <View style={styles.content}>
           <View style={styles.logoContainer}>
             <Image
@@ -103,19 +106,23 @@ export default function App() {
 
   if (appState === 'login') {
     return (
-      <LoginScreen 
-        onEmailVerify={handleEmailVerify} 
-        onOTPVerify={handleOTPVerify}
-      />
+      <View style={[styles.container, { height: appHeight }]}>
+        <LoginScreen 
+          onEmailVerify={handleEmailVerify} 
+          onOTPVerify={handleOTPVerify}
+        />
+      </View>
     );
   }
 
   if (appState === 'dashboard') {
     return (
-      <DashboardScreen 
-        userEmail={userEmail}
-        onLogout={handleLogout}
-      />
+      <OrderProvider>
+        <DashboardScreen 
+          userEmail={userEmail}
+          onLogout={handleLogout}
+        />
+      </OrderProvider>
     );
   }
 
