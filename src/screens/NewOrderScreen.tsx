@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Modal, FlatList, Image, StatusBar, TextInput, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import OrderReviewScreen from './OrderReviewScreen';
 import { useOrders } from '../context/OrderContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import api from '../utils/api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,7 +30,10 @@ interface TableOption {
   id: string;
   number: string;
   capacity: number;
-  status: 'available' | 'occupied';
+  status: 'available' | 'occupied' | 'reserved' | 'Available' | 'Occupied' | 'Reserved';
+  tableid?: string;
+  name?: string;
+  isSelectable?: boolean;
 }
 
 interface ReviewItem {
@@ -58,19 +63,60 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
   const [showReview, setShowReview] = useState(false);
   const [guestInfo, setGuestInfo] = useState<GuestInfo>({ name: '', whatsapp: '' });
   const [showGuestInfoModal, setShowGuestInfoModal] = useState(false);
+  const [tables, setTables] = useState<TableOption[]>([]);
+  const [loadingTables, setLoadingTables] = useState(true);
+  const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
 
   const { addOrder } = useOrders();
   const orderNumber = `ORD${Date.now().toString().slice(-4)}`;
 
-  // Mock table data
-  const tables: TableOption[] = [
-    { id: '1', number: 'Table 1', capacity: 4, status: 'available' },
-    { id: '2', number: 'Table 2', capacity: 2, status: 'available' },
-    { id: '3', number: 'Table 3', capacity: 6, status: 'occupied' },
-    { id: '4', number: 'Table 4', capacity: 4, status: 'available' },
-    { id: '5', number: 'Table 5', capacity: 8, status: 'available' },
-    { id: '6', number: 'Table 6', capacity: 2, status: 'available' },
-  ];
+  useEffect(() => {
+    fetchTables();
+  }, []);
+
+  const fetchTables = async () => {
+    setLoadingTables(true);
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        setMessage({ type: 'error', text: 'Authentication required' });
+        setTables([]);
+        return;
+      }
+
+      const response = await api.getAllTables(token);
+
+      // Backend returns { success: true, tables: [...] }
+      if (response?.success) {
+        const tablesData = Array.isArray(response.tables)
+          ? response.tables
+          : Array.isArray(response.data)
+          ? response.data
+          : [];
+
+        const formattedTables = tablesData.map((table: any) => ({
+          id: table.tableid || table._id || table.id || '',
+          tableid: table.tableid || table._id || table.id || '',
+          number: table.name || table.number || `Table ${table.tableid || table._id || table.id}`,
+          name: table.name || `Table ${table.tableid || table._id || table.id}`,
+          capacity: table.capacity || 4,
+          status: (table.status || 'available').toString()
+        }));
+
+        setTables(formattedTables);
+        // Do not show success messages for normal loads; only surface errors per UX request
+        setMessage(null);
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'Failed to load tables' });
+        setTables([]);
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.message || 'Network error while loading tables' });
+      setTables([]);
+    } finally {
+      setLoadingTables(false);
+    }
+  };
 
   const categories = ['All', 'Appetizers', 'Main Course', 'Desserts', 'Beverages'];
 
@@ -91,20 +137,31 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
     return matchesCategory && matchesSearch;
   });
 
-  const availableTables = tables.filter(table => table.status === 'available');
+  const availableTables = tables.filter(table => 
+    table.status?.toLowerCase() === 'available'
+  );
+
+  const allTablesForDisplay = tables.map(table => ({
+    ...table,
+    isSelectable: table.status?.toLowerCase() === 'available'
+  }));
 
   const handleTableSelect = (table: TableOption) => {
-    setSelectedTable(table.number);
+    if (table.status?.toLowerCase() !== 'available') {
+      setMessage({ type: 'error', text: `${table.number || table.name} is ${table.status}. Please select an available table.` });
+      return;
+    }
+    
+    setSelectedTable(table.number || table.name || `Table ${table.id}`);
     setShowTableDropdown(false);
+    setMessage(null);
   };
 
   const handleAddItem = (itemId: string) => {
-    // Only show instruction modal for new items (quantity 0)
     if (!orderItems[itemId] || orderItems[itemId] === 0) {
       setCurrentItemId(itemId);
       setShowInstructionModal(true);
     } else {
-      // For existing items, directly add to quantity
       setOrderItems(prev => ({
         ...prev,
         [itemId]: (prev[itemId] || 0) + 1
@@ -118,7 +175,6 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
         ...prev,
         [currentItemId]: (prev[currentItemId] || 0) + 1
       }));
-      // Store special instruction for this item if provided
       if (specialInstruction.trim()) {
         setSpecialInstructions(prev => ({
           ...prev,
@@ -155,7 +211,6 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
 
   const confirmGuestInfo = () => {
     if (!guestInfo.name.trim()) {
-      // Could add validation here
       return;
     }
     setShowGuestInfoModal(false);
@@ -214,7 +269,6 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
     </View>
   );
 
-  // Helper to build review items array
   const getReviewItems = (): ReviewItem[] => {
     return Object.entries(orderItems)
       .map(([itemId, qty]) => {
@@ -240,7 +294,6 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
         specialInstruction={specialInstruction}
         guestInfo={guestInfo}
         onConfirm={() => {
-          // Create order from current items
           const reviewItems = getReviewItems();
           const total = reviewItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
           
@@ -290,19 +343,16 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
           );
         }}
         onEdit={(itemId, newQuantity, newInstruction) => {
-          // Update quantity
           setOrderItems(prev => ({
             ...prev,
             [itemId]: newQuantity
           }));
-          // Update special instruction
           if (newInstruction && newInstruction.trim()) {
             setSpecialInstructions(prev => ({
               ...prev,
               [itemId]: newInstruction.trim()
             }));
           } else {
-            // Remove instruction if empty
             setSpecialInstructions(prev => {
               const updated = { ...prev };
               delete updated[itemId];
@@ -316,7 +366,6 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
             delete newItems[itemId];
             return newItems;
           });
-          // Also remove any special instructions for this item
           setSpecialInstructions(prev => {
             const updated = { ...prev };
             delete updated[itemId];
@@ -348,18 +397,32 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {message && (
+          <View style={[styles.section, styles.sectionCompact]}>
+            <View style={[styles.messageContainer, message.type === 'error' ? styles.messageError : message.type === 'success' ? styles.messageSuccess : styles.messageInfo]}>
+              <Text style={styles.messageText}>{message.text}</Text>
+            </View>
+          </View>
+        )}
+
         {/* Table Selection */}
         <View style={[styles.section, styles.sectionCompact]}>
           <Text style={styles.sectionTitle}>Select Table</Text>
-          <TouchableOpacity 
-            style={styles.tableDropdown}
-            onPress={() => setShowTableDropdown(true)}
-          >
-            <Text style={[styles.tableDropdownText, !selectedTable && styles.placeholderText]}>
-              {selectedTable || 'Choose a table'}
-            </Text>
-            <Ionicons name="chevron-down" size={20} color="#666666" />
-          </TouchableOpacity>
+          {loadingTables ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Loading tables...</Text>
+            </View>
+          ) : (
+            <TouchableOpacity 
+              style={styles.tableDropdown}
+              onPress={() => setShowTableDropdown(true)}
+            >
+              <Text style={[styles.tableDropdownText, !selectedTable && styles.placeholderText]}>
+                {selectedTable || 'Choose a table'}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#666666" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Search Bar */}
@@ -483,19 +546,57 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
         >
           <View style={styles.tableModal}>
             <Text style={styles.tableModalTitle}>Select Table</Text>
-            {availableTables.map((table) => (
-              <TouchableOpacity
-                key={table.id}
-                style={styles.tableOption}
-                onPress={() => handleTableSelect(table)}
-              >
-                <View style={styles.tableOptionContent}>
-                  <Text style={styles.tableOptionText}>{table.number}</Text>
-                  <Text style={styles.tableCapacity}>Capacity: {table.capacity}</Text>
-                </View>
-                <Ionicons name="checkmark-circle-outline" size={20} color="#2C2C2C" />
-              </TouchableOpacity>
-            ))}
+            {tables.length === 0 ? (
+              <View style={styles.noTablesContainer}>
+                <Text style={styles.noTablesText}>No tables found</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={fetchTables}>
+                  <Text style={styles.retryText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            ) : availableTables.length === 0 ? (
+              <View style={styles.noTablesContainer}>
+                <Text style={styles.noTablesText}>No available tables</Text>
+                <Text style={styles.noTablesSubtext}>All tables are currently occupied or reserved</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={fetchTables}>
+                  <Text style={styles.retryText}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              allTablesForDisplay.map((table) => (
+                <TouchableOpacity
+                  key={table.id}
+                  style={[
+                    styles.tableOption,
+                    !table.isSelectable && styles.tableOptionDisabled
+                  ]}
+                  onPress={() => handleTableSelect(table)}
+                  disabled={!table.isSelectable}
+                >
+                  <View style={styles.tableOptionContent}>
+                    <Text style={[
+                      styles.tableOptionText,
+                      !table.isSelectable && styles.tableOptionTextDisabled
+                    ]}>
+                      {table.number || table.name}
+                    </Text>
+                    <Text style={styles.tableCapacity}>Capacity: {table.capacity}</Text>
+                    <Text style={[
+                      styles.tableStatus,
+                      table.status?.toLowerCase() === 'available' ? styles.statusAvailable :
+                      table.status?.toLowerCase() === 'occupied' ? styles.statusOccupied :
+                      styles.statusReserved
+                    ]}>
+                      Status: {table.status}
+                    </Text>
+                  </View>
+                  {table.isSelectable ? (
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#2C2C2C" />
+                  ) : (
+                    <Ionicons name="close-circle-outline" size={20} color="#999999" />
+                  )}
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -982,5 +1083,95 @@ const styles = StyleSheet.create({
     fontSize: responsiveFontSize(14),
     color: '#333',
     minHeight: 48,
+  },
+  messageContainer: {
+    paddingHorizontal: width * 0.04,
+    paddingVertical: height * 0.012,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  messageText: {
+    fontSize: responsiveFontSize(13),
+    textAlign: 'center',
+  },
+  messageError: {
+    backgroundColor: '#FFEAE9',
+    borderColor: '#FFB8B0',
+  },
+  messageSuccess: {
+    backgroundColor: '#E9FFEF',
+    borderColor: '#B6F2C9',
+  },
+  messageInfo: {
+    backgroundColor: '#F2F9FF',
+    borderColor: '#CFE9FF',
+  },
+  loadingContainer: {
+    backgroundColor: '#FFFFFF',
+    padding: width * 0.04,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  loadingText: {
+    fontSize: responsiveFontSize(16),
+    color: '#666666',
+  },
+  noTablesContainer: {
+    padding: width * 0.04,
+    alignItems: 'center',
+  },
+  noTablesText: {
+    fontSize: responsiveFontSize(14),
+    color: '#666666',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#2C2C2C',
+    paddingHorizontal: width * 0.04,
+    paddingVertical: height * 0.01,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: responsiveFontSize(12),
+    fontWeight: '600',
+  },
+  tableStatus: {
+    fontSize: responsiveFontSize(11),
+    color: '#999999',
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
+  noTablesSubtext: {
+    fontSize: responsiveFontSize(12),
+    color: '#888888',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  tableOptionDisabled: {
+    opacity: 0.6,
+    backgroundColor: '#F8F8F8',
+  },
+  tableOptionTextDisabled: {
+    color: '#AAAAAA',
+  },
+  statusAvailable: {
+    color: '#22C55E',
+    fontWeight: '600',
+  },
+  statusOccupied: {
+    color: '#EF4444',
+    fontWeight: '600',
+  },
+  statusReserved: {
+    color: '#F59E0B',
+    fontWeight: '600',
   },
 });

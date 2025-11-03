@@ -7,9 +7,12 @@ import {
   Dimensions,
   TouchableOpacity,
   StatusBar,
+  Modal,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useOrders } from '../context/OrderContext';
+import { useOrders, Order } from '../context/OrderContext';
+import PrintOrderScreen from './PrintOrderScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -21,8 +24,12 @@ interface OrderItemProps {
   amount: string;
   status: 'preparing' | 'ready' | 'served';
   time: string;
+  order: Order;
+  isPrinted: boolean;
   onStatusChange: (orderId: string, newStatus: 'preparing' | 'ready' | 'served') => void;
   onRemove: (orderId: string) => void;
+  onViewOrder: (order: Order) => void;
+  onPrintOrder: (order: Order) => void;
 }
 
 const responsiveFontSize = (size: number) => {
@@ -31,7 +38,7 @@ const responsiveFontSize = (size: number) => {
   return Math.round(newSize);
 };
 
-const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, onStatusChange, onRemove }: OrderItemProps) => {
+const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, order, isPrinted, onStatusChange, onRemove, onViewOrder, onPrintOrder }: OrderItemProps) => {
   const getNextStatus = () => {
     if (status === 'preparing') return 'ready';
     if (status === 'ready') return 'served';
@@ -60,6 +67,27 @@ const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, o
         <Text style={styles.orderId}>#{orderNumber}</Text>
         <Text style={styles.orderDetails}>{table} • {items} items</Text>
         <Text style={styles.orderTime}>{time}</Text>
+        
+        {/* New Action Buttons Row */}
+        <View style={styles.orderActions}>
+          <TouchableOpacity
+            style={styles.viewOrderButton}
+            onPress={() => onViewOrder(order)}
+          >
+            <Ionicons name="eye-outline" size={14} color="#2C2C2C" />
+            <Text style={styles.viewOrderText}>View Order</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.printOrderButton}
+            onPress={() => onPrintOrder(order)}
+          >
+            <Ionicons name={isPrinted ? "checkmark-circle" : "print-outline"} size={14} color={isPrinted ? "#28A745" : "#2C2C2C"} />
+            <Text style={[styles.printOrderText, isPrinted && styles.printedOrderText]}>
+              {isPrinted ? "Printed" : "Print Order"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
       <View style={styles.orderRight}>
         <Text style={styles.orderAmount}>{amount}</Text>
@@ -99,6 +127,10 @@ export default function OrdersScreen() {
   const [selectedFilter, setSelectedFilter] = useState('active');
   const { orders, updateOrderStatus } = useOrders();
   const [localOrders, setLocalOrders] = useState(orders);
+  const [showChefView, setShowChefView] = useState(false);
+  const [showPrintView, setShowPrintView] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [printedOrders, setPrintedOrders] = useState<Set<string>>(new Set());
 
   // Filter out served orders for active view
   const activeOrders = localOrders.filter(order => order.status !== 'served');
@@ -124,6 +156,27 @@ export default function OrdersScreen() {
     // Remove order from local state when marked as served
     setLocalOrders(prev => prev.filter(order => order.id !== orderId));
     updateOrderStatus(orderId, 'served');
+  };
+
+  const handleViewOrder = (order: Order) => {
+    setSelectedOrder(order);
+    setShowChefView(true);
+  };
+
+  const handlePrintOrder = (order: Order) => {
+    setSelectedOrder(order);
+    setShowPrintView(true);
+  };
+
+  const handlePrintComplete = () => {
+    if (selectedOrder) {
+      setPrintedOrders(prev => new Set([...prev, selectedOrder.id]));
+    }
+  };
+
+  const handleClosePrintView = () => {
+    setShowPrintView(false);
+    setSelectedOrder(null);
   };
 
   const getFilteredOrders = () => {
@@ -181,6 +234,7 @@ export default function OrdersScreen() {
             ) : (
               filteredOrders.map((order) => {
                 const timeAgo = Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60));
+                const isPrinted = printedOrders.has(order.id);
                 return (
                   <OrderItem
                     key={order.id}
@@ -191,8 +245,12 @@ export default function OrdersScreen() {
                     amount={`₹${order.total.toFixed(0)}`}
                     status={order.status}
                     time={`${timeAgo} min ago`}
+                    order={order}
+                    isPrinted={isPrinted}
                     onStatusChange={handleStatusChange}
                     onRemove={handleRemoveOrder}
+                    onViewOrder={handleViewOrder}
+                    onPrintOrder={handlePrintOrder}
                   />
                 );
               })
@@ -200,6 +258,133 @@ export default function OrdersScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Chef Order View Modal */}
+      <Modal
+        visible={showChefView}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowChefView(false)}
+      >
+        <View style={styles.modalContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#2C2C2C" />
+          
+          {/* Modal Header */}
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderContent}>
+              <TouchableOpacity style={styles.modalBackButton} onPress={() => setShowChefView(false)} activeOpacity={0.7}>
+                <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <View style={styles.modalHeaderCenter}>
+                <Text style={styles.modalHeaderTitle}>Kitchen Order</Text>
+                <Text style={styles.modalHeaderSubtitle}>#{selectedOrder?.orderNumber}</Text>
+              </View>
+              <View style={styles.modalHeaderPlaceholder} />
+            </View>
+          </View>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {selectedOrder && (
+              <>
+                {/* Order Info */}
+                <View style={styles.modalSection}>
+                  <View style={styles.chefOrderInfoCard}>
+                    <View style={styles.chefOrderInfoHeader}>
+                      <View style={styles.chefOrderInfoLeft}>
+                        <Text style={styles.chefOrderNumber}>#{selectedOrder.orderNumber}</Text>
+                        <Text style={styles.chefTableNumber}>{selectedOrder.tableNumber}</Text>
+                      </View>
+                      <View style={styles.chefOrderInfoRight}>
+                        <View style={[
+                          styles.chefStatusBadge,
+                          selectedOrder.status === 'preparing' && styles.statusPreparing,
+                          selectedOrder.status === 'ready' && styles.statusReady,
+                        ]}>
+                          <Text style={[
+                            styles.chefStatusText,
+                            selectedOrder.status === 'preparing' && styles.statusTextPreparing,
+                            selectedOrder.status === 'ready' && styles.statusTextReady,
+                          ]}>
+                            {selectedOrder.status.charAt(0).toUpperCase() + selectedOrder.status.slice(1)}
+                          </Text>
+                        </View>
+                        <Text style={styles.chefOrderTime}>
+                          {Math.floor((Date.now() - selectedOrder.timestamp.getTime()) / (1000 * 60))} min ago
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Order Items */}
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>Order Items</Text>
+                  <View style={styles.chefItemsList}>
+                    {selectedOrder.items.map((item, index) => (
+                      <View key={`${item.id}-${index}`} style={styles.chefItemCard}>
+                        <View style={styles.chefItemHeader}>
+                          <Text style={styles.chefItemName}>{item.name}</Text>
+                          <View style={styles.chefQuantityBadge}>
+                            <Text style={styles.chefQuantityText}>×{item.quantity}</Text>
+                          </View>
+                        </View>
+                        
+                        {item.instruction && (
+                          <View style={styles.chefInstructionContainer}>
+                            <Ionicons name="document-text-outline" size={16} color="#F59E0B" />
+                            <Text style={styles.chefInstructionText}>{item.instruction}</Text>
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Special Instructions Summary */}
+                {selectedOrder.items.some(item => item.instruction) && (
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Special Instructions</Text>
+                    <View style={styles.chefInstructionsCard}>
+                      {selectedOrder.items
+                        .filter(item => item.instruction)
+                        .map((item, index) => (
+                          <View key={index} style={styles.chefInstructionRow}>
+                            <Text style={styles.chefInstructionItemName}>{item.name}:</Text>
+                            <Text style={styles.chefInstructionItemText}>{item.instruction}</Text>
+                          </View>
+                        ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* Action Button */}
+                <View style={styles.modalSection}>
+                  <TouchableOpacity style={styles.chefActionButton} onPress={() => setShowChefView(false)}>
+                    <Ionicons name="checkmark-circle-outline" size={24} color="#FFFFFF" />
+                    <Text style={styles.chefActionButtonText}>Understood</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Print Order Screen */}
+      <Modal
+        visible={showPrintView}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={handleClosePrintView}
+      >
+        {selectedOrder && (
+          <PrintOrderScreen
+            order={selectedOrder}
+            onBack={handleClosePrintView}
+            onPrintComplete={handlePrintComplete}
+          />
+        )}
+      </Modal>
     </View>
   );
 }
@@ -358,5 +543,236 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: responsiveFontSize(14),
     color: '#666666',
+  },
+  orderActions: {
+    flexDirection: 'row',
+    marginTop: 8,
+    gap: 8,
+  },
+  viewOrderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  viewOrderText: {
+    fontSize: responsiveFontSize(10),
+    color: '#2C2C2C',
+    fontWeight: '600',
+  },
+  printOrderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0FDF4',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  printOrderText: {
+    fontSize: responsiveFontSize(10),
+    color: '#2C2C2C',
+    fontWeight: '600',
+  },
+  printedOrderText: {
+    color: '#28A745',
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  modalHeader: {
+    backgroundColor: '#2C2C2C',
+    paddingTop: height * 0.03,
+    paddingBottom: height * 0.025,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 15,
+    marginBottom: 10,
+  },
+  modalHeaderContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: width * 0.05,
+  },
+  modalBackButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  modalHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: width * 0.05,
+  },
+  modalHeaderTitle: {
+    fontSize: responsiveFontSize(20),
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  modalHeaderSubtitle: {
+    fontSize: responsiveFontSize(14),
+    color: '#E0E0E0',
+  },
+  modalHeaderPlaceholder: {
+    width: 40,
+  },
+  modalContent: {
+    flex: 1,
+  },
+  modalSection: {
+    padding: width * 0.05,
+    paddingBottom: 16,
+  },
+  modalSectionTitle: {
+    fontSize: responsiveFontSize(18),
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 16,
+  },
+  chefOrderInfoCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  chefOrderInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  chefOrderInfoLeft: {
+    flex: 1,
+  },
+  chefOrderInfoRight: {
+    alignItems: 'flex-end',
+  },
+  chefOrderNumber: {
+    fontSize: responsiveFontSize(24),
+    fontWeight: 'bold',
+    color: '#2C2C2C',
+    marginBottom: 4,
+  },
+  chefTableNumber: {
+    fontSize: responsiveFontSize(16),
+    color: '#666666',
+    fontWeight: '600',
+  },
+  chefStatusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  chefStatusText: {
+    fontSize: responsiveFontSize(12),
+    fontWeight: '600',
+  },
+  chefOrderTime: {
+    fontSize: responsiveFontSize(12),
+    color: '#666666',
+  },
+  chefItemsList: {
+    gap: 12,
+  },
+  chefItemCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  chefItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  chefItemName: {
+    fontSize: responsiveFontSize(16),
+    fontWeight: '600',
+    color: '#2C2C2C',
+    flex: 1,
+  },
+  chefQuantityBadge: {
+    backgroundColor: '#2C2C2C',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  chefQuantityText: {
+    fontSize: responsiveFontSize(14),
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  chefInstructionContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFFBEB',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+    gap: 8,
+  },
+  chefInstructionText: {
+    fontSize: responsiveFontSize(14),
+    color: '#92400E',
+    flex: 1,
+    lineHeight: responsiveFontSize(18),
+  },
+  chefInstructionsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  chefInstructionRow: {
+    marginBottom: 12,
+  },
+  chefInstructionItemName: {
+    fontSize: responsiveFontSize(14),
+    fontWeight: '600',
+    color: '#2C2C2C',
+    marginBottom: 4,
+  },
+  chefInstructionItemText: {
+    fontSize: responsiveFontSize(14),
+    color: '#666666',
+    lineHeight: responsiveFontSize(18),
+  },
+  chefActionButton: {
+    backgroundColor: '#2C2C2C',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  chefActionButtonText: {
+    color: '#FFFFFF',
+    fontSize: responsiveFontSize(16),
+    fontWeight: '600',
   },
 });

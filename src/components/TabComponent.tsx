@@ -18,9 +18,10 @@ const { width, height } = Dimensions.get('window');
 interface TabComponentProps {
   onTabChange?: (tabIndex: number) => void;
   onNewOrder?: () => void;
+  onNavigateToTables?: () => void;
 }
 
-export default function TabComponent({ onTabChange, onNewOrder }: TabComponentProps) {
+export default function TabComponent({ onTabChange, onNewOrder, onNavigateToTables }: TabComponentProps) {
   const [activeTab, setActiveTab] = useState(0);
 
   const tabs = [
@@ -39,13 +40,13 @@ export default function TabComponent({ onTabChange, onNewOrder }: TabComponentPr
   const renderScreen = () => {
     switch (activeTab) {
       case 0:
-        return <OverviewScreen onNewOrder={onNewOrder} />;
+        return <OverviewScreen onNewOrder={onNewOrder} onNavigateToTables={onNavigateToTables} />;
       case 1:
         return <OrdersScreen />;
       case 2:
         return <MenuScreen />;
       default:
-        return <OverviewScreen onNewOrder={onNewOrder} />;
+        return <OverviewScreen onNewOrder={onNewOrder} onNavigateToTables={onNavigateToTables} />;
     }
   };
 

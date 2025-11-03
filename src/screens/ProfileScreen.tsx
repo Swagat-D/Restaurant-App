@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,12 @@ import {
   StyleSheet,
   Dimensions,
   StatusBar,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import api from '../utils/api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,52 +24,138 @@ const responsiveFontSize = (size: number) => {
 
 interface ProfileScreenProps {
   onBack?: () => void;
+  userEmail?: string;
 }
 
-export default function ProfileScreen({ onBack }: ProfileScreenProps) {
-  const userData = {
-    name: 'John Doe',
-    email: 'john.doe@restaurant.com',
-    employeeId: 'EMP001',
-    role: 'Waiter',
-    restaurantName: 'Delicious Restaurant',
-    shift: 'Morning Shift (9 AM - 5 PM)',
-    joinDate: 'January 15, 2024',
+interface EmployeeData {
+  name: string;
+  username: string;
+  email: string;
+  role: string;
+  img?: string;
+  empid: string;
+  resname: string;
+  joinDate: string;
+  shift: string;
+}
+
+export default function ProfileScreen({ onBack, userEmail }: ProfileScreenProps) {
+  const [employee, setEmployee] = useState<EmployeeData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editData, setEditData] = useState<Partial<EmployeeData>>({});
+  const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    fetchEmployeeData();
+  }, []);
+
+  const fetchEmployeeData = async () => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token || !userEmail) {
+        setMessage({ type: 'error', text: 'Authentication required' });
+        setLoading(false);
+        return;
+      }
+
+      const response = await api.getEmployeeProfile(userEmail, token);
+      setLoading(false);
+      if (response?.success && response.data) {
+        setEmployee(response.data);
+        setEditData(response.data);
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'Failed to load profile' });
+      }
+    } catch (err: any) {
+      setLoading(false);
+      setMessage({ type: 'error', text: err?.message || 'Network error' });
+    }
   };
 
-  const profileOptions = [
-    {
-      id: '1',
-      title: 'Edit Profile',
-      icon: 'person-outline',
-      onPress: () => console.log('Edit Profile'),
-    },
-    {
-      id: '2',
-      title: 'Change Password',
-      icon: 'lock-closed-outline',
-      onPress: () => console.log('Change Password'),
-    },
-    {
-      id: '3',
-      title: 'Notifications',
-      icon: 'notifications-outline',
-      onPress: () => console.log('Notifications'),
-    },
-    {
-      id: '4',
-      title: 'Help & Support',
-      icon: 'help-circle-outline',
-      onPress: () => console.log('Help & Support'),
-    },
-    {
-      id: '5',
-      title: 'Logout',
-      icon: 'log-out-outline',
-      onPress: () => console.log('Logout'),
-      isLogout: true,
-    },
-  ];
+  const handleSave = async () => {
+    if (!editData || !employee) return;
+    
+    setSaving(true);
+    setMessage(null);
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        setMessage({ type: 'error', text: 'Authentication required' });
+        setSaving(false);
+        return;
+      }
+
+      const response = await api.updateEmployeeProfile(editData, token);
+      setSaving(false);
+      if (response?.success) {
+        setEmployee({ ...employee, ...editData });
+        setEditing(false);
+        setMessage({ type: 'success', text: response.message || 'Profile updated successfully' });
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'Failed to update profile' });
+      }
+    } catch (err: any) {
+      setSaving(false);
+      setMessage({ type: 'error', text: err?.message || 'Network error while saving' });
+    }
+  };
+
+  const handleCancel = () => {
+    setEditData(employee || {});
+    setEditing(false);
+    setMessage(null);
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#2C2C2C" />
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={onBack}>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.headerCenter}>
+              <Text style={styles.greetingText}>Profile</Text>
+              <Text style={styles.subtitleText}>Loading...</Text>
+            </View>
+            <View style={styles.menuButton} />
+          </View>
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!employee) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#2C2C2C" />
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <TouchableOpacity style={styles.backButton} activeOpacity={0.7} onPress={onBack}>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.headerCenter}>
+              <Text style={styles.greetingText}>Profile</Text>
+              <Text style={styles.subtitleText}>Error</Text>
+            </View>
+            <View style={styles.menuButton} />
+          </View>
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>Failed to load profile data</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchEmployeeData}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -80,22 +170,43 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
             <Text style={styles.greetingText}>Profile</Text>
             <Text style={styles.subtitleText}>Manage your account</Text>
           </View>
-          <TouchableOpacity style={styles.menuButton}>
-            <Ionicons name="menu-outline" size={24} color="#FFFFFF" />
+          <TouchableOpacity 
+            style={styles.menuButton}
+            onPress={() => setEditing(!editing)}
+            disabled={saving}
+          >
+            <Ionicons name={editing ? "close" : "create-outline"} size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {message && (
+          <View style={styles.section}>
+            <View style={[styles.messageContainer, message.type === 'error' ? styles.messageError : message.type === 'success' ? styles.messageSuccess : styles.messageInfo]}>
+              <Text style={styles.messageText}>{message.text}</Text>
+            </View>
+          </View>
+        )}
+
         <View style={styles.section}>
           <View style={styles.profileCard}>
             <View style={styles.avatarContainer}>
               <Ionicons name="person" size={48} color="#2C2C2C" />
             </View>
             <View style={styles.profileInfo}>
-              <Text style={styles.userName}>{userData.name}</Text>
-              <Text style={styles.userRole}>{userData.role} • {userData.employeeId}</Text>
-              <Text style={styles.userEmail}>{userData.email}</Text>
+              {editing ? (
+                <TextInput
+                  style={styles.editInput}
+                  value={editData.name || ''}
+                  onChangeText={(text) => setEditData({ ...editData, name: text })}
+                  placeholder="Name"
+                />
+              ) : (
+                <Text style={styles.userName}>{employee.name}</Text>
+              )}
+              <Text style={styles.userRole}>{employee.role} • {employee.empid}</Text>
+              <Text style={styles.userEmail}>{employee.email}</Text>
             </View>
           </View>
         </View>
@@ -105,58 +216,63 @@ export default function ProfileScreen({ onBack }: ProfileScreenProps) {
           <View style={styles.detailsCard}>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Restaurant</Text>
-              <Text style={styles.detailValue}>{userData.restaurantName}</Text>
+              {editing ? (
+                <TextInput
+                  style={styles.editInput}
+                  value={editData.resname || ''}
+                  onChangeText={(text) => setEditData({ ...editData, resname: text })}
+                  placeholder="Restaurant Name"
+                />
+              ) : (
+                <Text style={styles.detailValue}>{employee.resname}</Text>
+              )}
             </View>
             <View style={styles.divider} />
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Shift</Text>
-              <Text style={styles.detailValue}>{userData.shift}</Text>
+              {editing ? (
+                <TextInput
+                  style={styles.editInput}
+                  value={editData.shift || ''}
+                  onChangeText={(text) => setEditData({ ...editData, shift: text })}
+                  placeholder="Shift"
+                />
+              ) : (
+                <Text style={styles.detailValue}>{employee.shift}</Text>
+              )}
             </View>
             <View style={styles.divider} />
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Join Date</Text>
-              <Text style={styles.detailValue}>{userData.joinDate}</Text>
+              <Text style={styles.detailValue}>
+                {new Date(employee.joinDate).toLocaleDateString()}
+              </Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Settings</Text>
-          <View style={styles.optionsCard}>
-            {profileOptions.map((option, index) => (
-              <View key={option.id}>
-                <TouchableOpacity 
-                  style={[
-                    styles.optionItem,
-                    option.isLogout && styles.logoutOption
-                  ]} 
-                  onPress={option.onPress}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.optionLeft}>
-                    <Ionicons 
-                      name={option.icon as any} 
-                      size={20} 
-                      color={option.isLogout ? '#D32F2F' : '#2C2C2C'} 
-                    />
-                    <Text style={[
-                      styles.optionTitle,
-                      option.isLogout && styles.logoutText
-                    ]}>
-                      {option.title}
-                    </Text>
-                  </View>
-                  <Ionicons 
-                    name="chevron-forward" 
-                    size={20} 
-                    color={option.isLogout ? '#D32F2F' : '#CCCCCC'} 
-                  />
-                </TouchableOpacity>
-                {index < profileOptions.length - 1 && !option.isLogout && <View style={styles.divider} />}
-              </View>
-            ))}
+        {editing && (
+          <View style={styles.section}>
+            <View style={styles.actionButtons}>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.cancelButton]} 
+                onPress={handleCancel}
+                disabled={saving}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.saveButton, saving && styles.disabledButton]} 
+                onPress={handleSave}
+                disabled={saving}
+              >
+                <Text style={styles.saveButtonText}>
+                  {saving ? 'Saving...' : 'Save'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -321,5 +437,102 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: '#D32F2F',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: width * 0.05,
+  },
+  loadingText: {
+    fontSize: responsiveFontSize(16),
+    color: '#666666',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: width * 0.05,
+  },
+  errorText: {
+    fontSize: responsiveFontSize(16),
+    color: '#D32F2F',
+    textAlign: 'center',
+    marginBottom: height * 0.02,
+  },
+  retryButton: {
+    backgroundColor: '#2C2C2C',
+    paddingHorizontal: width * 0.06,
+    paddingVertical: height * 0.015,
+    borderRadius: 10,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: responsiveFontSize(14),
+    fontWeight: '600',
+  },
+  messageContainer: {
+    paddingHorizontal: width * 0.04,
+    paddingVertical: height * 0.012,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  messageText: {
+    fontSize: responsiveFontSize(13),
+    textAlign: 'center',
+  },
+  messageError: {
+    backgroundColor: '#FFEAE9',
+    borderColor: '#FFB8B0',
+  },
+  messageSuccess: {
+    backgroundColor: '#E9FFEF',
+    borderColor: '#B6F2C9',
+  },
+  messageInfo: {
+    backgroundColor: '#F2F9FF',
+    borderColor: '#CFE9FF',
+  },
+  editInput: {
+    backgroundColor: '#F8F8F8',
+    borderRadius: 8,
+    paddingHorizontal: width * 0.03,
+    paddingVertical: height * 0.01,
+    fontSize: responsiveFontSize(14),
+    color: '#333333',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginTop: 4,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: width * 0.03,
+  },
+  actionButton: {
+    flex: 1,
+    paddingVertical: height * 0.015,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#F5F5F5',
+    borderWidth: 1,
+    borderColor: '#CCCCCC',
+  },
+  cancelButtonText: {
+    fontSize: responsiveFontSize(14),
+    color: '#666666',
+    fontWeight: '600',
+  },
+  saveButton: {
+    backgroundColor: '#2C2C2C',
+  },
+  saveButtonText: {
+    fontSize: responsiveFontSize(14),
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  disabledButton: {
+    backgroundColor: '#CCCCCC',
   },
 });

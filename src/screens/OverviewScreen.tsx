@@ -76,9 +76,10 @@ const RecentOrder = ({ orderId, table, items, amount, status, time }: RecentOrde
 
 interface OverviewScreenProps {
   onNewOrder?: () => void;
+  onNavigateToTables?: () => void;
 }
 
-export default function OverviewScreen({ onNewOrder }: OverviewScreenProps) {
+export default function OverviewScreen({ onNewOrder, onNavigateToTables }: OverviewScreenProps) {
   const { orders, updateOrderStatus } = useOrders();
   const [showAllOrdersModal, setShowAllOrdersModal] = useState(false);
   
@@ -193,7 +194,7 @@ export default function OverviewScreen({ onNewOrder }: OverviewScreenProps) {
             <Ionicons name="restaurant-outline" size={28} color="#2C2C2C" />
             <Text style={styles.quickActionTitle}>Kitchen</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionCard}>
+          <TouchableOpacity style={styles.quickActionCard} onPress={onNavigateToTables}>
             <Ionicons name="apps-outline" size={28} color="#2C2C2C" />
             <Text style={styles.quickActionTitle}>Tables</Text>
           </TouchableOpacity>
