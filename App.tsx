@@ -4,6 +4,8 @@ import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import { OrderProvider } from './src/context/OrderContext';
 import { useNavigationHeight } from './src/hooks/useNavigationHeight';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import api from './src/utils/api';
 
 const { width, height } = Dimensions.get('window');
 
@@ -23,8 +25,21 @@ export default function App() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        
-        // Show splash for 1.8 seconds then go to login
+        const token = await AsyncStorage.getItem('auth_token');
+        if (token) {
+          try {
+            const response = await api.verifyToken(token);
+            if (response?.success) {
+              const email = response.data?.email || response.email || response?.data?.employee?.email || '';
+              setUserEmail(email);
+              setAppState('dashboard');
+              return;
+            }
+          } catch (err) {
+            console.log('Token verify failed', err);
+          }
+        }
+
         setTimeout(() => {
           setAppState('login');
         }, 1800);
@@ -43,12 +58,14 @@ export default function App() {
     setUserEmail(email);
   };
 
-  const handleOTPVerify = async (otp: string) => {
-    // In a real app, verify OTP with backend
-    console.log('OTP verified:', otp);
-    
+  const handleOTPVerify = async (token: string) => {
+    console.log('Received auth token from login flow');
     try {
-      
+      const response = await api.verifyToken(token);
+      if (response?.success) {
+        const email = response.data?.email || response.email || response?.data?.employee?.email || '';
+        if (email) setUserEmail(email);
+      }
       setAppState('dashboard');
     } catch (error) {
       console.log('Error saving login session:', error);
@@ -58,6 +75,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      await AsyncStorage.removeItem('auth_token');
       setUserEmail('');
       setAppState('login');
     } catch (error) {

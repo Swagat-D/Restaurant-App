@@ -14,9 +14,13 @@ import {
 
 const { width, height } = Dimensions.get('window');
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import api from '../utils/api';
+
 interface LoginScreenProps {
   onEmailVerify: (email: string) => void;
-  onOTPVerify: (otp: string) => void;
+  // onOTPVerify now receives token string when verification succeeds
+  onOTPVerify: (token: string) => void;
 }
 
 const responsiveFontSize = (size: number) => {
@@ -30,8 +34,9 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
   const [showOTP, setShowOTP] = useState(false);
-  const [timer, setTimer] = useState(60);
+  const [timer, setTimer] = useState(30);
   const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+  const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
   
   const inputRefs = useRef<(TextInput | null)[]>([]);
   
@@ -43,11 +48,27 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
     if (otpString.length !== 6) return;
 
     setIsVerifyingOTP(true);
-    
-    setTimeout(() => {
+    try {
+      // call verify-otp endpoint
+      const response = await api.verifyOtp(email.trim(), otpString);
       setIsVerifyingOTP(false);
-      onOTPVerify(otpString);
-    }, 1500);
+      if (response?.success) {
+        const token = response.token || response.data?.token || '';
+        if (token) {
+          // store token and notify app
+          await AsyncStorage.setItem('auth_token', token);
+          setMessage({ type: 'success', text: response.message || 'Successfully signed in' });
+          onOTPVerify(token);
+        } else {
+          setMessage({ type: 'error', text: response.message || 'Authentication failed' });
+        }
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'Invalid code or user not registered' });
+      }
+    } catch (err: any) {
+      setIsVerifyingOTP(false);
+      setMessage({ type: 'error', text: err?.message || 'Network error while verifying code' });
+    }
   };
 
   useEffect(() => {
@@ -68,23 +89,33 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
 
   const handleEmailSubmit = async () => {
     if (!email.trim()) return;
-    
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
+      setMessage({ type: 'error', text: 'Please enter a valid business email address' });
       return;
     }
 
     setIsLoading(true);
-    
-    setTimeout(() => {
+    setMessage(null);
+    try {
+      const response = await api.sendOtp(email.trim());
       setIsLoading(false);
-      setShowOTP(true);
-      setTimer(60);
-      
-      setTimeout(() => {
-        inputRefs.current[0]?.focus();
-      }, 100);
-    }, 1500);
+      if (response?.success) {
+        setShowOTP(true);
+        setTimer(30);
+        // inform parent about email so app can display user name
+        onEmailVerify(email.trim());
+        setMessage({ type: 'info', text: response.message || 'Verification code sent. Check your email.' });
+        setTimeout(() => {
+          inputRefs.current[0]?.focus();
+        }, 100);
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'You are not registered as an employee. Please contact your employer.' });
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      setMessage({ type: 'error', text: err?.message || 'Network error while sending code' });
+    }
   };
 
   const handleOtpChange = (value: string, index: number) => {
@@ -115,9 +146,25 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
   };
 
   const handleResendOTP = () => {
-    setTimer(60);
+    // call send-otp again
+    setMessage(null);
     setOtp(['', '', '', '', '', '']);
-    inputRefs.current[0]?.focus();
+    setIsLoading(true);
+    api.sendOtp(email.trim())
+      .then((response) => {
+        setIsLoading(false);
+        if (response?.success) {
+          setTimer(30);
+          setMessage({ type: 'info', text: response.message || 'Verification code resent.' });
+          setTimeout(() => inputRefs.current[0]?.focus(), 100);
+        } else {
+          setMessage({ type: 'error', text: response?.message || 'Unable to resend code' });
+        }
+      })
+      .catch((err) => {
+        setIsLoading(false);
+        setMessage({ type: 'error', text: err?.message || 'Network error while resending code' });
+      });
   };
 
   return (
@@ -193,6 +240,12 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
                     </TouchableOpacity>
                   )}
                 </View>
+              </View>
+            )}
+
+            {message && (
+              <View style={[styles.messageContainer, message.type === 'error' ? styles.messageError : message.type === 'success' ? styles.messageSuccess : styles.messageInfo]}>
+                <Text style={styles.messageText}>{message.text}</Text>
               </View>
             )}
 
@@ -409,5 +462,29 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
     fontWeight: '600',
+  },
+  messageContainer: {
+    marginTop: height * 0.015,
+    paddingHorizontal: width * 0.04,
+    paddingVertical: height * 0.012,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  messageText: {
+    fontSize: responsiveFontSize(13),
+    color: '#222',
+    textAlign: 'center',
+  },
+  messageError: {
+    backgroundColor: '#FFEAE9',
+    borderColor: '#FFB8B0',
+  },
+  messageSuccess: {
+    backgroundColor: '#E9FFEF',
+    borderColor: '#B6F2C9',
+  },
+  messageInfo: {
+    backgroundColor: '#F2F9FF',
+    borderColor: '#CFE9FF',
   },
 });
