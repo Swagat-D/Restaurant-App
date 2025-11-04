@@ -22,7 +22,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.swagat1212.restromanagementappdsw"
     },
     "web": {
       "favicon": "./assets/logo.png"
@@ -30,6 +31,11 @@
     "plugins": [
       "expo-asset",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bbe8cf44-78cd-478a-a82a-c7b9952dc1fe"
+      }
+    }
   }
 }
