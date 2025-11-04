@@ -33,22 +33,92 @@ export default function PrintOrderScreen({ order, onBack, onPrintComplete }: Pri
   const handlePrint = async () => {
     setIsPrinting(true);
     
-    setTimeout(() => {
-      setIsPrinting(false);
-      setPrintCompleted(true);
-      onPrintComplete();
+    try {
+      // Create printable content as HTML
+      const printContent = `
+        <html>
+          <head>
+            <style>
+              body { font-family: 'Courier New', monospace; font-size: 14px; margin: 0; padding: 20px; }
+              .receipt { width: 300px; margin: 0 auto; }
+              .header { text-align: center; margin-bottom: 20px; }
+              .dashed { border-top: 2px dashed #000; margin: 10px 0; }
+              .item-row { display: flex; justify-content: space-between; margin: 5px 0; }
+              .notes { margin: 10px 0; }
+              .footer { text-align: center; margin-top: 20px; font-weight: bold; }
+            </style>
+          </head>
+          <body>
+            <div class="receipt">
+              <div class="header">
+                <h2>KITCHEN ORDER</h2>
+                <div class="dashed"></div>
+                <p>Order: #${order.orderNumber || order.orderid}</p>
+                <p>Table: ${order.tableNumber}</p>
+                <p>Time: ${new Date().toLocaleTimeString()}</p>
+                ${order.customerName ? `<p>Customer: ${order.customerName}</p>` : ''}
+                <div class="dashed"></div>
+              </div>
+              
+              <div class="items">
+                ${order.items.map(item => `
+                  <div class="item-row">
+                    <span>${item.quantity}x ${(item.name || 'Unknown Item').toUpperCase()}</span>
+                  </div>
+                  ${(item.instruction || item.notes) ? `<div class="notes">NOTE: ${(item.instruction || item.notes || '').toUpperCase()}</div>` : ''}
+                `).join('')}
+              </div>
+              
+              <div class="dashed"></div>
+              <p><strong>TOTAL ITEMS: ${order.items.reduce((sum, item) => sum + item.quantity, 0)}</strong></p>
+              <div class="dashed"></div>
+              
+              <div class="footer">
+                <p>** PREPARE IMMEDIATELY **</p>
+                <p>KITCHEN COPY</p>
+              </div>
+            </div>
+          </body>
+        </html>
+      `;
+
+      // For web browsers, try to print
+      if (typeof window !== 'undefined') {
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(printContent);
+          printWindow.document.close();
+          printWindow.print();
+          printWindow.close();
+        }
+      }
       
+      // Complete the printing process
       setTimeout(() => {
+        setIsPrinting(false);
+        setPrintCompleted(true);
+        onPrintComplete();
+        
         Alert.alert(
-          'Print Successful',
-          'Order has been sent to the kitchen printer.',
+          'Print Request Sent',
+          'Order has been sent to the printer. Please check your printer for the receipt.',
           [{ text: 'OK', onPress: onBack }]
         );
-      }, 500);
-    }, 2000); // 2 second printing simulation
+      }, 1000);
+      
+    } catch (error) {
+      setIsPrinting(false);
+      Alert.alert(
+        'Print Error',
+        'Failed to send print request. Please try again or check your printer connection.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
-  const timeAgo = Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60));
+  const timeAgo = order.timestamp ? 
+    Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60)) :
+    Math.floor((Date.now() - new Date(order.orderDate || Date.now()).getTime()) / (1000 * 60));
 
   return (
     <View style={styles.container}>
@@ -115,12 +185,12 @@ export default function PrintOrderScreen({ order, onBack, onPrintComplete }: Pri
                 <View key={index} style={styles.itemRow}>
                   <View style={styles.itemLine}>
                     <Text style={styles.itemQty}>{item.quantity}</Text>
-                    <Text style={styles.itemName}>{item.name.toUpperCase()}</Text>
+                    <Text style={styles.itemName}>{(item.name || 'Unknown Item').toUpperCase()}</Text>
                   </View>
-                  {item.instruction && (
+                  {(item.instruction || item.notes) && (
                     <View style={styles.instructionLine}>
                       <Text style={styles.instructionPrefix}>  NOTE:</Text>
-                      <Text style={styles.itemInstruction}>{item.instruction.toUpperCase()}</Text>
+                      <Text style={styles.itemInstruction}>{(item.instruction || item.notes || '').toUpperCase()}</Text>
                     </View>
                   )}
                 </View>
@@ -138,14 +208,14 @@ export default function PrintOrderScreen({ order, onBack, onPrintComplete }: Pri
             </View>
 
             {/* Special Notes if any */}
-            {order.items.some(item => item.instruction) && (
+            {order.items.some(item => item.instruction || item.notes) && (
               <View style={styles.notesSection}>
                 <Text style={styles.notesHeader}>** SPECIAL NOTES **</Text>
                 {order.items
-                  .filter(item => item.instruction)
+                  .filter(item => item.instruction || item.notes)
                   .map((item, index) => (
                     <Text key={index} style={styles.noteText}>
-                      {item.name.toUpperCase()}: {item.instruction?.toUpperCase() || ''}
+                      {(item.name || 'Unknown Item').toUpperCase()}: {(item.instruction || item.notes || '').toUpperCase()}
                     </Text>
                   ))}
                 <Text style={styles.dottedLine}>................................</Text>

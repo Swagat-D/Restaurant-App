@@ -27,7 +27,7 @@ interface RecentOrderProps {
   table: string;
   items: number;
   amount: string;
-  status: 'preparing' | 'ready' | 'served';
+  status: 'pending' | 'preparing' | 'ready' | 'served' | 'done' | 'cancelled';
   time: string;
 }
 
@@ -56,15 +56,21 @@ const RecentOrder = ({ orderId, table, items, amount, status, time }: RecentOrde
       <Text style={styles.orderAmount}>{amount}</Text>
       <View style={[
         styles.orderStatusBadge,
+        status === 'pending' && styles.statusPending,
         status === 'preparing' && styles.statusPreparing,
         status === 'ready' && styles.statusReady,
         status === 'served' && styles.statusServed,
+        status === 'done' && styles.statusDone,
+        status === 'cancelled' && styles.statusCancelled,
       ]}>
         <Text style={[
           styles.orderStatusText,
+          status === 'pending' && styles.statusTextPending,
           status === 'preparing' && styles.statusTextPreparing,
           status === 'ready' && styles.statusTextReady,
           status === 'served' && styles.statusTextServed,
+          status === 'done' && styles.statusTextDone,
+          status === 'cancelled' && styles.statusTextCancelled,
         ]}>
           {status.charAt(0).toUpperCase() + status.slice(1)}
         </Text>
@@ -83,13 +89,21 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
   const { orders, updateOrderStatus } = useOrders();
   const [showAllOrdersModal, setShowAllOrdersModal] = useState(false);
   
-  const activeOrders = orders.filter(order => order.status !== 'served');
+  // Filter out only cancelled and done orders from active orders 
+  // Active = orders that are still editable (pending, preparing, ready, served)
+  const activeOrders = orders.filter(order => !['cancelled', 'done'].includes(order.status));
+  
+  // Kitchen active orders = orders that need kitchen attention (exclude served)
+  const kitchenActiveOrders = orders.filter(order => !['served', 'cancelled', 'done'].includes(order.status));
+  
+  // Filter today's orders (include ALL orders of today for complete stats)
   const todayOrders = orders.filter(order => {
     const today = new Date().toDateString();
-    return order.timestamp.toDateString() === today;
+    const orderDate = order.timestamp ? order.timestamp.toDateString() : new Date(order.orderDate || Date.now()).toDateString();
+    return orderDate === today; // Include ALL orders of today
   });
   
-  const todayRevenue = todayOrders.reduce((sum, order) => sum + order.total, 0);
+  const todayRevenue = todayOrders.reduce((sum, order) => sum + (order.total || order.totalAmount || 0), 0);
 
   const handleStatusUpdate = (orderId: string, newStatus: 'preparing' | 'ready' | 'served') => {
     updateOrderStatus(orderId, newStatus);
@@ -104,11 +118,11 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
       icon: "receipt-outline"
     },
     { 
-      title: "Active Orders", 
-      value: activeOrders.length.toString(), 
-      subtitle: "Need attention", 
+      title: "Kitchen Orders", 
+      value: kitchenActiveOrders.length.toString(), 
+      subtitle: "In progress", 
       color: "#FF6B35",
-      icon: "time-outline"
+      icon: "restaurant-outline"
     },
     { 
       title: "Revenue", 
@@ -155,24 +169,32 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
           <Text style={styles.sectionTitle}>Active Orders ({activeOrders.length})</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {activeOrders.map((order) => (
-              <View key={order.id} style={styles.activeOrderCard}>
+              <View key={order._id || order.id} style={styles.activeOrderCard}>
                 <View style={styles.orderCardHeader}>
-                  <Text style={styles.orderCardNumber}>#{order.orderNumber}</Text>
+                  <Text style={styles.orderCardNumber}>#{order.orderNumber || order.orderid}</Text>
                   <Text style={styles.orderCardTable}>{order.tableNumber}</Text>
                 </View>
                 
-                <Text style={styles.orderCardTotal}>₹{order.total.toFixed(0)}</Text>
+                <Text style={styles.orderCardTotal}>₹{(order.total || order.totalAmount || 0).toFixed(0)}</Text>
                 <Text style={styles.orderCardItems}>{order.items.length} items</Text>
                 
                 <View style={[
                   styles.orderStatusIndicator,
+                  order.status === 'pending' && styles.statusPending,
                   order.status === 'preparing' && styles.statusPreparing,
                   order.status === 'ready' && styles.statusReady,
+                  order.status === 'served' && styles.statusServed,
+                  order.status === 'done' && styles.statusDone,
+                  order.status === 'cancelled' && styles.statusCancelled,
                 ]}>
                   <Text style={[
                     styles.orderStatusText,
+                    order.status === 'pending' && styles.statusTextPending,
                     order.status === 'preparing' && styles.statusTextPreparing,
                     order.status === 'ready' && styles.statusTextReady,
+                    order.status === 'served' && styles.statusTextServed,
+                    order.status === 'done' && styles.statusTextDone,
+                    order.status === 'cancelled' && styles.statusTextCancelled,
                   ]}>
                     {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                   </Text>
@@ -210,15 +232,15 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
         </View>
         <View style={styles.ordersList}>
           {todayOrders.slice(0, 5).map((order) => {
-            const timeAgo = Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60));
+            const timeAgo = order.timestamp ? Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60)) : 0;
             return (
               <RecentOrder 
                 key={order.id}
-                orderId={order.orderNumber} 
-                table={order.tableNumber} 
-                items={order.items.length} 
-                amount={`₹${order.total.toFixed(0)}`} 
-                status={order.status} 
+                orderId={order.orderNumber || 'Unknown'} 
+                table={String(order.tableNumber || 0)} 
+                items={order.items?.length || 0} 
+                amount={`₹${(order.total || 0).toFixed(0)}`} 
+                status={order.status as 'pending' | 'preparing' | 'ready' | 'served' | 'done' | 'cancelled'} 
                 time={`${timeAgo} min ago`} 
               />
             );
@@ -260,17 +282,17 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
           ) : (
             <FlatList
               data={todayOrders}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item) => item.id || Math.random().toString()}
               renderItem={({ item }) => {
-                const timeAgo = Math.floor((Date.now() - item.timestamp.getTime()) / (1000 * 60));
+                const timeAgo = item.timestamp ? Math.floor((Date.now() - item.timestamp.getTime()) / (1000 * 60)) : 0;
                 return (
                   <View style={styles.modalOrderItem}>
                     <RecentOrder 
-                      orderId={item.orderNumber} 
-                      table={item.tableNumber} 
-                      items={item.items.length} 
-                      amount={`₹${item.total.toFixed(0)}`} 
-                      status={item.status} 
+                      orderId={item.orderNumber || 'Unknown'} 
+                      table={String(item.tableNumber || 0)} 
+                      items={item.items?.length || 0} 
+                      amount={`₹${(item.total || 0).toFixed(0)}`} 
+                      status={item.status as 'pending' | 'preparing' | 'ready' | 'served' | 'done' | 'cancelled'} 
                       time={`${timeAgo} min ago`} 
                     />
                   </View>
@@ -471,6 +493,9 @@ const styles = StyleSheet.create({
     minWidth: width * 0.18,
     alignItems: 'center',
   },
+  statusPending: {
+    backgroundColor: '#F3E8FF',
+  },
   statusPreparing: {
     backgroundColor: '#FFF3CD',
   },
@@ -480,9 +505,18 @@ const styles = StyleSheet.create({
   statusServed: {
     backgroundColor: '#D4EDDA',
   },
+  statusDone: {
+    backgroundColor: '#E2E3E5',
+  },
+  statusCancelled: {
+    backgroundColor: '#F8D7DA',
+  },
   orderStatusText: {
     fontSize: responsiveFontSize(11),
     fontWeight: '600',
+  },
+  statusTextPending: {
+    color: '#7C3AED',
   },
   statusTextPreparing: {
     color: '#856404',
@@ -492,6 +526,12 @@ const styles = StyleSheet.create({
   },
   statusTextServed: {
     color: '#155724',
+  },
+  statusTextDone: {
+    color: '#6C757D',
+  },
+  statusTextCancelled: {
+    color: '#721C24',
   },
   emptyOrdersState: {
     backgroundColor: '#FFFFFF',

@@ -22,11 +22,13 @@ interface OrderItemProps {
   table: string;
   items: number;
   amount: string;
-  status: 'preparing' | 'ready' | 'served';
+  status: 'pending' | 'preparing' | 'ready' | 'served' | 'done';
   time: string;
   order: Order;
   isPrinted: boolean;
-  onStatusChange: (orderId: string, newStatus: 'preparing' | 'ready' | 'served') => void;
+  isUpdating?: boolean;
+  onStatusChange: (orderId: string, newStatus: 'preparing' | 'ready' | 'served' | 'done') => void;
+  onCancel: (orderId: string) => void;
   onRemove: (orderId: string) => void;
   onViewOrder: (order: Order) => void;
   onPrintOrder: (order: Order) => void;
@@ -38,27 +40,38 @@ const responsiveFontSize = (size: number) => {
   return Math.round(newSize);
 };
 
-const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, order, isPrinted, onStatusChange, onRemove, onViewOrder, onPrintOrder }: OrderItemProps) => {
+const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, order, isPrinted, isUpdating = false, onStatusChange, onCancel, onRemove, onViewOrder, onPrintOrder }: OrderItemProps) => {
   const getNextStatus = () => {
+    if (status === 'pending') return 'preparing';
     if (status === 'preparing') return 'ready';
     if (status === 'ready') return 'served';
-    return 'served';
+    if (status === 'served') return 'done';
+    return 'done';
   };
 
   const getButtonText = () => {
+    if (status === 'pending') return 'Start Preparing';
     if (status === 'preparing') return 'Mark Ready';
     if (status === 'ready') return 'Mark Served';
-    return 'Served';
+    if (status === 'served') return 'Mark Done';
+    return 'Done';
   };
 
   const handleStatusUpdate = () => {
+    if (isUpdating) return;
+    
     const nextStatus = getNextStatus();
-    if (nextStatus === 'served') {
-      // Remove from list when marked as served
+    if (nextStatus === 'done') {
+      // Remove from list when marked as done (admin only action)
       onRemove(orderId);
     } else {
       onStatusChange(orderId, nextStatus);
     }
+  };
+
+  const handleCancel = () => {
+    if (isUpdating) return;
+    onCancel(orderId);
   };
 
   return (
@@ -78,27 +91,32 @@ const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, o
             <Text style={styles.viewOrderText}>View Order</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity
-            style={styles.printOrderButton}
-            onPress={() => onPrintOrder(order)}
-          >
-            <Ionicons name={isPrinted ? "checkmark-circle" : "print-outline"} size={14} color={isPrinted ? "#28A745" : "#2C2C2C"} />
-            <Text style={[styles.printOrderText, isPrinted && styles.printedOrderText]}>
-              {isPrinted ? "Printed" : "Print Order"}
-            </Text>
-          </TouchableOpacity>
+          {/* Show print button only for non-pending orders */}
+          {status !== 'pending' && (
+            <TouchableOpacity
+              style={styles.printOrderButton}
+              onPress={() => onPrintOrder(order)}
+            >
+              <Ionicons name={isPrinted ? "checkmark-circle" : "print-outline"} size={14} color={isPrinted ? "#28A745" : "#2C2C2C"} />
+              <Text style={[styles.printOrderText, isPrinted && styles.printedOrderText]}>
+                {isPrinted ? "Printed" : "Print Order"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
       <View style={styles.orderRight}>
         <Text style={styles.orderAmount}>{amount}</Text>
         <View style={[
           styles.orderStatusBadge,
+          status === 'pending' && styles.statusPending,
           status === 'preparing' && styles.statusPreparing,
           status === 'ready' && styles.statusReady,
           status === 'served' && styles.statusServed,
         ]}>
           <Text style={[
             styles.orderStatusText,
+            status === 'pending' && styles.statusTextPending,
             status === 'preparing' && styles.statusTextPreparing,
             status === 'ready' && styles.statusTextReady,
             status === 'served' && styles.statusTextServed,
@@ -106,18 +124,42 @@ const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, o
             {status.charAt(0).toUpperCase() + status.slice(1)}
           </Text>
         </View>
-        {status !== 'served' && (
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              status === 'preparing' && styles.preparingButton,
-              status === 'ready' && styles.readyButton,
-            ]}
-            onPress={handleStatusUpdate}
-          >
-            <Text style={styles.actionButtonText}>{getButtonText()}</Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.orderButtonsContainer}>
+          {/* Show cancel button only for pending orders */}
+          {status === 'pending' && (
+            <TouchableOpacity
+              style={[styles.cancelButton, isUpdating && styles.disabledButton]}
+              onPress={handleCancel}
+              disabled={isUpdating}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close-circle-outline" size={responsiveFontSize(12)} color="#FFFFFF" />
+              <Text style={styles.cancelButtonText}>
+                {isUpdating ? 'Cancelling...' : 'Cancel'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* Show status update button for non-done orders */}
+          {status !== 'done' && (
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                status === 'pending' && styles.pendingButton,
+                status === 'preparing' && styles.preparingButton,
+                status === 'ready' && styles.readyButton,
+                status === 'served' && styles.servedButton,
+                isUpdating && styles.disabledButton,
+              ]}
+              onPress={handleStatusUpdate}
+              disabled={isUpdating}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.actionButtonText}>
+                {isUpdating ? 'Updating...' : getButtonText()}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -125,37 +167,92 @@ const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, o
 
 export default function OrdersScreen() {
   const [selectedFilter, setSelectedFilter] = useState('active');
-  const { orders, updateOrderStatus } = useOrders();
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedStatus, setSelectedStatus] = useState<string>('');
+  const { orders, updateOrderStatus, loading, error, refreshOrders, fetchOrdersByDate, fetchOrdersByStatus, fetchOrdersByDateAndStatus } = useOrders();
   const [localOrders, setLocalOrders] = useState(orders);
   const [showChefView, setShowChefView] = useState(false);
   const [showPrintView, setShowPrintView] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [printedOrders, setPrintedOrders] = useState<Set<string>>(new Set());
+  const [updatingOrderStatus, setUpdatingOrderStatus] = useState<Set<string>>(new Set());
 
-  // Filter out served orders for active view
-  const activeOrders = localOrders.filter(order => order.status !== 'served');
+  // Filter out only cancelled and done orders for active view (keep served orders visible)
+  const activeOrders = localOrders.filter(order => !['cancelled', 'done'].includes(order.status));
+  const pendingOrders = activeOrders.filter(order => order.status === 'pending');
   const preparingOrders = activeOrders.filter(order => order.status === 'preparing');
   const readyOrders = activeOrders.filter(order => order.status === 'ready');
+  const servedOrders = activeOrders.filter(order => order.status === 'served');
   
   const filters = [
     { id: 'active', label: 'Active Orders', count: activeOrders.length },
+    { id: 'pending', label: 'Pending', count: pendingOrders.length },
     { id: 'preparing', label: 'Preparing', count: preparingOrders.length },
     { id: 'ready', label: 'Ready', count: readyOrders.length },
+    { id: 'served', label: 'Served', count: servedOrders.length },
   ];
 
-  const handleStatusChange = (orderId: string, newStatus: 'preparing' | 'ready' | 'served') => {
-    updateOrderStatus(orderId, newStatus);
-    setLocalOrders(prev => 
-      prev.map(order => 
-        order.id === orderId ? { ...order, status: newStatus } : order
-      )
-    );
+  const handleCancelOrder = async (orderid: string) => {
+    try {
+      setUpdatingOrderStatus(prev => new Set([...prev, orderid]));
+      
+      const success = await updateOrderStatus(orderid, 'cancelled');
+      if (success) {
+        // Remove order from local state when cancelled
+        setLocalOrders(prev => prev.filter(order => order.orderid !== orderid));
+      }
+    } catch (err) {
+      console.error('Failed to cancel order:', err);
+    } finally {
+      setUpdatingOrderStatus(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderid);
+        return newSet;
+      });
+    }
   };
 
-  const handleRemoveOrder = (orderId: string) => {
-    // Remove order from local state when marked as served
-    setLocalOrders(prev => prev.filter(order => order.id !== orderId));
-    updateOrderStatus(orderId, 'served');
+  const handleStatusChange = async (orderid: string, newStatus: 'preparing' | 'ready' | 'served' | 'done') => {
+    try {
+      setUpdatingOrderStatus(prev => new Set([...prev, orderid]));
+      
+      const success = await updateOrderStatus(orderid, newStatus);
+      if (success) {
+        setLocalOrders(prev => 
+          prev.map(order => 
+            order.orderid === orderid ? { ...order, status: newStatus } : order
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Failed to update order status:', err);
+    } finally {
+      setUpdatingOrderStatus(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderid);
+        return newSet;
+      });
+    }
+  };
+
+  const handleRemoveOrder = async (orderid: string) => {
+    try {
+      setUpdatingOrderStatus(prev => new Set([...prev, orderid]));
+      
+      const success = await updateOrderStatus(orderid, 'done');
+      if (success) {
+        // Remove order from local state when marked as done (admin action)
+        setLocalOrders(prev => prev.filter(order => order.orderid !== orderid));
+      }
+    } catch (err) {
+      console.error('Failed to mark order as done:', err);
+    } finally {
+      setUpdatingOrderStatus(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(orderid);
+        return newSet;
+      });
+    }
   };
 
   const handleViewOrder = (order: Order) => {
@@ -170,7 +267,7 @@ export default function OrdersScreen() {
 
   const handlePrintComplete = () => {
     if (selectedOrder) {
-      setPrintedOrders(prev => new Set([...prev, selectedOrder.id]));
+      setPrintedOrders(prev => new Set([...prev, selectedOrder.orderid]));
     }
   };
 
@@ -179,10 +276,31 @@ export default function OrdersScreen() {
     setSelectedOrder(null);
   };
 
+  const handleRefresh = async () => {
+    if (selectedDate && selectedStatus) {
+      await fetchOrdersByDateAndStatus(selectedDate, selectedStatus);
+    } else if (selectedDate) {
+      await fetchOrdersByDate(selectedDate);
+    } else if (selectedStatus) {
+      await fetchOrdersByStatus(selectedStatus);
+    } else {
+      await refreshOrders();
+    }
+  };
+
+  // Load today's orders by default
+  React.useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    setSelectedDate(today);
+    fetchOrdersByDate(today);
+  }, []);
+
   const getFilteredOrders = () => {
     if (selectedFilter === 'active') return activeOrders;
+    if (selectedFilter === 'pending') return pendingOrders;
     if (selectedFilter === 'preparing') return preparingOrders;
     if (selectedFilter === 'ready') return readyOrders;
+    if (selectedFilter === 'served') return servedOrders;
     return activeOrders;
   };
 
@@ -198,6 +316,18 @@ export default function OrdersScreen() {
       <StatusBar barStyle="light-content" backgroundColor="#2C2C2C" />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Error Message */}
+        {error && (
+          <View style={styles.section}>
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{error}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {/* Filter Tabs */}
         <View style={styles.section}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterContainer}>
@@ -223,39 +353,58 @@ export default function OrdersScreen() {
 
         {/* Orders List */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {selectedFilter === 'active' ? 'Active Orders' : filters.find(f => f.id === selectedFilter)?.label}
-          </Text>
-          <View style={styles.ordersList}>
-            {filteredOrders.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No orders found</Text>
-              </View>
-            ) : (
-              filteredOrders.map((order) => {
-                const timeAgo = Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60));
-                const isPrinted = printedOrders.has(order.id);
-                return (
-                  <OrderItem
-                    key={order.id}
-                    orderId={order.id}
-                    orderNumber={order.orderNumber}
-                    table={order.tableNumber}
-                    items={order.items.length}
-                    amount={`₹${order.total.toFixed(0)}`}
-                    status={order.status}
-                    time={`${timeAgo} min ago`}
-                    order={order}
-                    isPrinted={isPrinted}
-                    onStatusChange={handleStatusChange}
-                    onRemove={handleRemoveOrder}
-                    onViewOrder={handleViewOrder}
-                    onPrintOrder={handlePrintOrder}
-                  />
-                );
-              })
-            )}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {selectedFilter === 'active' ? 'Active Orders' : filters.find(f => f.id === selectedFilter)?.label}
+            </Text>
+            <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh} disabled={loading}>
+              <Ionicons name="refresh" size={20} color={loading ? "#CCCCCC" : "#2C2C2C"} />
+            </TouchableOpacity>
           </View>
+          
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>Loading orders...</Text>
+            </View>
+          ) : (
+            <View style={styles.ordersList}>
+              {filteredOrders.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>No orders found</Text>
+                </View>
+              ) : (
+                filteredOrders.map((order) => {
+                  const timeAgo = order.timestamp ? 
+                    Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60)) :
+                    Math.floor((Date.now() - new Date(order.orderDate).getTime()) / (1000 * 60));
+                  const isPrinted = printedOrders.has(order.orderid);
+                  const isUpdating = updatingOrderStatus.has(order.orderid);
+                  const orderStatus = order.status as 'pending' | 'preparing' | 'ready' | 'served' | 'done';
+                  
+                  return (
+                    <OrderItem
+                      key={order._id}
+                      orderId={order.orderid}
+                      orderNumber={order.orderNumber || order.orderid}
+                      table={order.tableNumber}
+                      items={order.items.length}
+                      amount={`₹${(order.total || order.totalAmount).toFixed(0)}`}
+                      status={orderStatus}
+                      time={`${timeAgo} min ago`}
+                      order={order}
+                      isPrinted={isPrinted}
+                      isUpdating={isUpdating}
+                      onStatusChange={handleStatusChange}
+                      onCancel={handleCancelOrder}
+                      onRemove={handleRemoveOrder}
+                      onViewOrder={handleViewOrder}
+                      onPrintOrder={handlePrintOrder}
+                    />
+                  );
+                })
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
 
@@ -309,7 +458,10 @@ export default function OrdersScreen() {
                           </Text>
                         </View>
                         <Text style={styles.chefOrderTime}>
-                          {Math.floor((Date.now() - selectedOrder.timestamp.getTime()) / (1000 * 60))} min ago
+                          {selectedOrder.timestamp ? 
+                            Math.floor((Date.now() - selectedOrder.timestamp.getTime()) / (1000 * 60)) :
+                            Math.floor((Date.now() - new Date(selectedOrder.orderDate).getTime()) / (1000 * 60))
+                          } min ago
                         </Text>
                       </View>
                     </View>
@@ -489,6 +641,9 @@ const styles = StyleSheet.create({
     minWidth: width * 0.18,
     alignItems: 'center',
   },
+  statusPending: {
+    backgroundColor: '#F3E8FF',
+  },
   statusPreparing: {
     backgroundColor: '#FFF3CD',
   },
@@ -502,6 +657,9 @@ const styles = StyleSheet.create({
     fontSize: responsiveFontSize(11),
     fontWeight: '600',
   },
+  statusTextPending: {
+    color: '#7C3AED',
+  },
   statusTextPreparing: {
     color: '#856404',
   },
@@ -511,6 +669,37 @@ const styles = StyleSheet.create({
   statusTextServed: {
     color: '#155724',
   },
+  orderButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  cancelButton: {
+    backgroundColor: '#EF4444',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: width * 0.15,
+    gap: 4,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontSize: responsiveFontSize(10),
+    fontWeight: '600',
+  },
+  pendingButton: {
+    backgroundColor: '#7C3AED',
+  },
   actionButton: {
     backgroundColor: '#2C2C2C',
     paddingHorizontal: 12,
@@ -518,11 +707,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 4,
   },
+  disabledButton: {
+    backgroundColor: '#CCCCCC',
+  },
   preparingButton: {
     backgroundColor: '#FFA500',
   },
   readyButton: {
     backgroundColor: '#28A745',
+  },
+  servedButton: {
+    backgroundColor: '#6C757D',
   },
   actionButtonText: {
     color: '#FFFFFF',
@@ -774,5 +969,56 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: responsiveFontSize(16),
     fontWeight: '600',
+  },
+  errorContainer: {
+    backgroundColor: '#FFEAE9',
+    borderColor: '#FFB8B0',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: width * 0.04,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: responsiveFontSize(14),
+    color: '#D32F2F',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  retryButton: {
+    backgroundColor: '#2C2C2C',
+    paddingHorizontal: width * 0.04,
+    paddingVertical: height * 0.01,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontSize: responsiveFontSize(12),
+    fontWeight: '600',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: height * 0.015,
+  },
+  refreshButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#F5F5F5',
+  },
+  loadingContainer: {
+    backgroundColor: '#FFFFFF',
+    padding: width * 0.04,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  loadingText: {
+    fontSize: responsiveFontSize(16),
+    color: '#666666',
   },
 });

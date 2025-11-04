@@ -9,6 +9,8 @@ import {
   Modal,
   FlatList,
   StatusBar,
+  Alert,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useOrders } from '../context/OrderContext';
@@ -31,6 +33,27 @@ interface TablesScreenProps {
   onNewOrder?: (tableNumber: string) => void;
 }
 
+interface MenuItem {
+  _id: string;
+  name: string;
+  price: number;
+  description?: string;
+  category?: string;
+  isVegetarian?: boolean;
+}
+
+interface OrderItem {
+  _id?: string;
+  menuid: string;
+  notes?: string;
+  quantity: number;
+  // Client-side fields for display
+  id?: string;
+  name?: string;
+  price?: number;
+  instruction?: string;
+}
+
 const responsiveFontSize = (size: number) => {
   const scale = width / 375;
   const newSize = size * scale;
@@ -38,16 +61,56 @@ const responsiveFontSize = (size: number) => {
 };
 
 export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) {
-  const { orders } = useOrders();
+  const { orders, refreshOrders, updateFullOrder } = useOrders();
   const [tables, setTables] = useState<TableOption[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
   const [selectedTable, setSelectedTable] = useState<TableOption | null>(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  
+  // Order editing states
+  const [editingOrder, setEditingOrder] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [editedItems, setEditedItems] = useState<{ [key: string]: number }>({});
+  const [editedItemInstructions, setEditedItemInstructions] = useState<{ [key: string]: string }>({});
+  const [editedCustomerName, setEditedCustomerName] = useState('');
+  const [editedCustomerPhone, setEditedCustomerPhone] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     fetchTables();
+    fetchMenuItems();
   }, []);
+
+  const fetchMenuItems = async () => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        return;
+      }
+
+      const response = await api.getAllMenuItems(token);
+      
+      if (response?.success) {
+        const items = Array.isArray(response.menus) 
+          ? response.menus 
+          : Array.isArray(response.menuItems) 
+          ? response.menuItems 
+          : Array.isArray(response.data) 
+          ? response.data 
+          : Array.isArray(response.menu)
+          ? response.menu
+          : [];
+        
+        setMenuItems(items);
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'Failed to load menu items' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: 'Network error while loading menu items' });
+    }
+  };
 
   const fetchTables = async () => {
     setLoadingTables(true);
@@ -91,10 +154,11 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
     }
   };
 
-  // Get orders for a specific table
+  // Get orders for a specific table (only active orders - exclude done and cancelled)
   const getTableOrders = (tableNumber: string) => {
     return orders.filter(order => 
-      order.tableNumber === tableNumber && order.status !== 'served'
+      order.tableNumber === tableNumber && 
+      !['done', 'cancelled'].includes(order.status)
     );
   };
 
@@ -127,10 +191,217 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
     }
   };
 
+  const handleEditOrder = (order: any) => {
+    setEditingOrder(order);
+    setEditedCustomerName(order.customerName || '');
+    setEditedCustomerPhone(order.customerPhone || '');
+    
+    // Initialize edited items with current order items
+    const initialItems: { [key: string]: number } = {};
+    const initialInstructions: { [key: string]: string } = {};
+    order.items.forEach((item: any) => {
+      const itemId = typeof item.menuid === 'string' 
+        ? item.menuid 
+        : (item.menuid?._id || item.id || item._id);
+      initialItems[itemId] = item.quantity;
+      initialInstructions[itemId] = item.notes || item.instruction || '';
+    });
+    setEditedItems(initialItems);
+    setEditedItemInstructions(initialInstructions);
+    
+    setShowEditModal(true);
+  };
+
+  const handleUpdateOrder = async () => {
+    if (!editingOrder) return;
+
+    setIsUpdating(true);
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        setMessage({ type: 'error', text: 'Authentication required' });
+        return;
+      }
+
+      // Prepare items for API (combine existing and new items)
+      const items: any[] = [];
+      
+      // Add items that were modified from existing order
+      editingOrder.items.forEach((existingItem: any) => {
+        const itemId = typeof existingItem.menuid === 'string' 
+          ? existingItem.menuid 
+          : (existingItem.menuid?._id || existingItem.id || existingItem._id);
+        
+        const quantity = editedItems[itemId];
+        if (quantity && quantity > 0) {
+          items.push({
+            menuid: itemId,
+            notes: editedItemInstructions[itemId] || existingItem.notes || existingItem.instruction || '',
+            quantity
+          });
+        }
+      });
+
+      // Add new items that were added to the order
+      Object.entries(editedItems).forEach(([menuid, quantity]) => {
+        // Check if this is a new item (not in existing order)
+        const isExistingItem = editingOrder.items.some((item: any) => {
+          const itemId = typeof item.menuid === 'string' 
+            ? item.menuid 
+            : (item.menuid?._id || item.id || item._id);
+          return itemId === menuid;
+        });
+        
+        if (!isExistingItem && quantity > 0) {
+          items.push({
+            menuid,
+            notes: editedItemInstructions[menuid] || '',
+            quantity
+          });
+        }
+      });
+
+      if (items.length === 0) {
+        setMessage({ type: 'error', text: 'Order must have at least one item' });
+        return;
+      }
+
+      // Check if the order has been modified (new items added OR quantities changed)
+      const hasNewItems = Object.entries(editedItems).some(([menuid, quantity]) => {
+        const isExistingItem = editingOrder.items.some((item: any) => {
+          const itemId = typeof item.menuid === 'string' 
+            ? item.menuid 
+            : (item.menuid?._id || item.id || item._id);
+          return itemId === menuid;
+        });
+        return !isExistingItem && quantity > 0;
+      });
+
+      // Check if any existing item quantities were changed
+      const hasQuantityChanges = editingOrder.items.some((item: any) => {
+        const itemId = typeof item.menuid === 'string' 
+          ? item.menuid 
+          : (item.menuid?._id || item.id || item._id);
+        const currentQuantity = editedItems[itemId] || 0;
+        return currentQuantity !== item.quantity;
+      });
+
+      // If new items are added OR quantities changed, reset order status to pending
+      let orderStatus = editingOrder.status;
+      const hasChanges = hasNewItems || hasQuantityChanges;
+      
+      console.log('Change detection:', {
+        hasNewItems,
+        hasQuantityChanges,
+        hasChanges,
+        currentStatus: editingOrder.status,
+        editedItems,
+        originalItems: editingOrder.items
+      });
+      
+      if (hasChanges) {
+        orderStatus = 'pending';
+        console.log('Order modified - resetting to pending:', { hasNewItems, hasQuantityChanges });
+      }
+
+      // Validate menu items are still available and get current pricing
+      const validatedItems: any[] = [];
+      for (const item of items) {
+        const menuItem = menuItems.find(m => m._id === item.menuid);
+        if (!menuItem) {
+          setMessage({ type: 'error', text: `Menu item not found: ${item.menuid}. Please refresh and try again.` });
+          return;
+        }
+        
+        // Use current menu pricing
+        validatedItems.push({
+          ...item,
+          currentPrice: menuItem.price
+        });
+      }
+
+      // Calculate totals using current menu prices
+      const subtotal = validatedItems.reduce((total, item) => {
+        return total + (item.currentPrice * item.quantity);
+      }, 0);
+
+      const orderData = {
+        tableid: editingOrder.tableid,
+        tableNumber: editingOrder.tableNumber,
+        customerName: editedCustomerName,
+        customerPhone: editedCustomerPhone,
+        orderid: editingOrder.orderid,
+        items,
+        subtotal,
+        tax: editingOrder.tax || 0,
+        discount: editingOrder.discount || 0,
+        totalAmount: subtotal + (editingOrder.tax || 0) - (editingOrder.discount || 0),
+        status: orderStatus,
+      };
+
+      const response = await api.updateOrder(token, orderData);
+      
+      console.log('Order update response:', response);
+      console.log('Order data sent:', orderData);
+      
+      if (response?.success) {
+        // Use the new updateFullOrder method which refreshes orders automatically
+        const updateSuccess = await updateFullOrder(orderData);
+        if (updateSuccess) {
+          const successMessage = hasChanges 
+            ? 'Order updated successfully! Order status reset to pending for kitchen preparation.'
+            : 'Order updated successfully!';
+          setMessage({ type: 'success', text: successMessage });
+          setShowEditModal(false);
+          setEditingOrder(null);
+          setEditedItems({});
+          setEditedItemInstructions({});
+        } else {
+          setMessage({ type: 'error', text: 'Failed to update local order state' });
+        }
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'Failed to update order' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.message || 'Error updating order' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const adjustItemQuantity = (menuid: string, change: number) => {
+    setEditedItems(prev => {
+      const currentQty = prev[menuid] || 0;
+      const newQty = Math.max(0, currentQty + change);
+      
+      if (newQty === 0) {
+        const { [menuid]: _, ...rest } = prev;
+        // Also clear instructions when removing item
+        setEditedItemInstructions(prevInstr => {
+          const { [menuid]: __, ...restInstr } = prevInstr;
+          return restInstr;
+        });
+        return rest;
+      }
+      
+      return {
+        ...prev,
+        [menuid]: newQty
+      };
+    });
+  };
+
+  const updateItemInstructions = (menuid: string, instructions: string) => {
+    setEditedItemInstructions(prev => ({
+      ...prev,
+      [menuid]: instructions
+    }));
+  };
+
   const renderTableCard = (table: TableOption) => {
     const displayStatus = getTableDisplayStatus(table);
     const tableOrders = getTableOrders(table.number || table.name || `Table ${table.id}`);
-    const totalAmount = tableOrders.reduce((sum, order) => sum + order.total, 0);
+    const totalAmount = tableOrders.reduce((sum, order) => sum + (order.total || 0), 0);
 
     return (
       <TouchableOpacity
@@ -197,7 +468,9 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>Tables Management</Text>
-            <Text style={styles.headerSubtitle}>{tables.length} tables available</Text>
+            <Text style={styles.headerSubtitle}>
+              {tables.filter(table => getTableDisplayStatus(table) === 'occupied').length} occupied tables
+            </Text>
           </View>
           <TouchableOpacity style={styles.refreshButton} onPress={fetchTables}>
             <Ionicons name="refresh" size={24} color="#FFFFFF" />
@@ -222,15 +495,15 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Restaurant Tables</Text>
             <View style={styles.tablesGrid}>
-              {tables.map(renderTableCard)}
+              {tables.filter(table => getTableDisplayStatus(table) === 'occupied').map(renderTableCard)}
             </View>
-            {tables.length === 0 && (
+            {tables.filter(table => getTableDisplayStatus(table) === 'occupied').length === 0 && (
               <View style={styles.emptyState}>
                 <Ionicons name="apps-outline" size={48} color="#CCCCCC" />
-                <Text style={styles.emptyStateTitle}>No Tables Found</Text>
-                <Text style={styles.emptyStateText}>No tables are available at the moment</Text>
+                <Text style={styles.emptyStateTitle}>No Occupied Tables</Text>
+                <Text style={styles.emptyStateText}>All tables are currently available</Text>
                 <TouchableOpacity style={styles.retryButton} onPress={fetchTables}>
-                  <Text style={styles.retryText}>Retry</Text>
+                  <Text style={styles.retryText}>Refresh</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -276,7 +549,7 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
               }
 
               return tableOrders.map((order) => {
-                const timeAgo = Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60));
+                const timeAgo = order.timestamp ? Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60)) : 0;
                 return (
                   <View key={order.id} style={styles.orderCard}>
                     <View style={styles.orderCardHeader}>
@@ -297,14 +570,14 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
                     </View>
 
                     <Text style={styles.orderTime}>{timeAgo} minutes ago</Text>
-                    <Text style={styles.orderTotal}>Total: ₹{order.total.toFixed(0)}</Text>
+                    <Text style={styles.orderTotal}>Total: ₹{(order.total || 0).toFixed(0)}</Text>
 
                     <View style={styles.orderItemsList}>
                       {order.items.map((item) => (
                         <View key={item.id} style={styles.orderItemRow}>
                           <Text style={styles.orderItemName}>{item.name}</Text>
                           <Text style={styles.orderItemQty}>×{item.quantity}</Text>
-                          <Text style={styles.orderItemPrice}>₹{(item.price * item.quantity).toFixed(0)}</Text>
+                          <Text style={styles.orderItemPrice}>₹{((item.price || 0) * item.quantity).toFixed(0)}</Text>
                         </View>
                       ))}
                     </View>
@@ -317,10 +590,208 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
                         )}
                       </View>
                     )}
+
+                    <TouchableOpacity 
+                      style={styles.updateOrderButton}
+                      onPress={() => handleEditOrder(order)}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+                      <Text style={styles.updateOrderButtonText}>Update Order</Text>
+                    </TouchableOpacity>
                   </View>
                 );
               });
             })()}
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Order Edit Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowEditModal(false)} style={styles.closeButton}>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>
+              Edit Order #{editingOrder?.orderNumber}
+            </Text>
+            <View style={styles.placeholder} />
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            {/* Customer Info */}
+            <View style={styles.customerInfoSection}>
+              <Text style={styles.sectionTitle}>Customer Information</Text>
+              <TextInput
+                style={styles.customerInput}
+                placeholder="Customer Name"
+                value={editedCustomerName}
+                onChangeText={setEditedCustomerName}
+              />
+              <TextInput
+                style={styles.customerInput}
+                placeholder="Customer Phone"
+                value={editedCustomerPhone}
+                onChangeText={setEditedCustomerPhone}
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            {/* Current Items */}
+            <View style={styles.currentItemsSection}>
+              <Text style={styles.sectionTitle}>Current Items</Text>
+              {editingOrder?.items.map((item: any) => {
+                const menuItem = menuItems.find(m => m._id === (typeof item.menuid === 'string' ? item.menuid : item.menuid?._id));
+                const itemId = typeof item.menuid === 'string' 
+                  ? item.menuid 
+                  : (item.menuid?._id || item.id || item._id);
+                const currentQty = editedItems[itemId] || 0;
+                
+                return (
+                  <View key={item.id || item._id} style={styles.editItemContainer}>
+                    <View style={styles.editItemRow}>
+                      <View style={styles.editItemInfo}>
+                        <Text style={styles.editItemName}>{item.name || menuItem?.name}</Text>
+                        <Text style={styles.editItemPrice}>₹{((item.price || menuItem?.price || 0) * currentQty).toFixed(0)}</Text>
+                      </View>
+                      <View style={styles.quantityControls}>
+                        <TouchableOpacity
+                          style={styles.quantityButton}
+                          onPress={() => adjustItemQuantity(itemId, -1)}
+                        >
+                          <Ionicons name="remove" size={16} color="#FFFFFF" />
+                        </TouchableOpacity>
+                        <Text style={styles.quantityText}>{currentQty}</Text>
+                        <TouchableOpacity
+                          style={styles.quantityButton}
+                          onPress={() => adjustItemQuantity(itemId, 1)}
+                        >
+                          <Ionicons name="add" size={16} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    {currentQty > 0 && (
+                      <TextInput
+                        style={styles.instructionsInput}
+                        placeholder="Add special instructions (optional)"
+                        value={editedItemInstructions[itemId] || ''}
+                        onChangeText={(text) => updateItemInstructions(itemId, text)}
+                        multiline
+                        numberOfLines={2}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* Add New Items */}
+            <View style={styles.addItemsSection}>
+              <Text style={styles.sectionTitle}>Add New Items</Text>
+              {menuItems.length === 0 ? (
+                <View style={styles.menuLoadingContainer}>
+                  <Text style={styles.noItemsText}>Loading menu items...</Text>
+                  <TouchableOpacity 
+                    style={styles.retryButton} 
+                    onPress={fetchMenuItems}
+                  >
+                    <Text style={styles.retryText}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                menuItems
+                  .filter(item => !editingOrder?.items.some((orderItem: any) => {
+                    const orderItemId = typeof orderItem.menuid === 'string' 
+                      ? orderItem.menuid 
+                      : (orderItem.menuid?._id || orderItem.id || orderItem._id);
+                    return orderItemId === item._id;
+                  }))
+                  .map((item) => {
+                    const currentQty = editedItems[item._id] || 0;
+                    
+                    if (currentQty === 0) {
+                      return (
+                        <TouchableOpacity
+                          key={item._id}
+                          style={styles.addItemRow}
+                          onPress={() => adjustItemQuantity(item._id, 1)}
+                        >
+                          <View style={styles.addItemInfo}>
+                            <Text style={styles.addItemName}>{item.name}</Text>
+                            <Text style={styles.addItemDescription}>{item.description || 'No description'}</Text>
+                            <Text style={styles.addItemPrice}>₹{item.price}</Text>
+                          </View>
+                          <Ionicons name="add-circle-outline" size={24} color="#2C2C2C" />
+                        </TouchableOpacity>
+                      );
+                    } else {
+                      return (
+                        <View key={item._id} style={styles.editItemContainer}>
+                          <View style={styles.editItemRow}>
+                            <View style={styles.editItemInfo}>
+                              <Text style={styles.editItemName}>{item.name}</Text>
+                              <Text style={styles.editItemPrice}>₹{(item.price * currentQty).toFixed(0)} (₹{item.price} each)</Text>
+                            </View>
+                            <View style={styles.quantityControls}>
+                              <TouchableOpacity
+                                style={styles.quantityButton}
+                                onPress={() => adjustItemQuantity(item._id, -1)}
+                              >
+                                <Ionicons name="remove" size={16} color="#FFFFFF" />
+                              </TouchableOpacity>
+                              <Text style={styles.quantityText}>{currentQty}</Text>
+                              <TouchableOpacity
+                                style={styles.quantityButton}
+                                onPress={() => adjustItemQuantity(item._id, 1)}
+                              >
+                                <Ionicons name="add" size={16} color="#FFFFFF" />
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                          <TextInput
+                            style={styles.instructionsInput}
+                            placeholder="Add special instructions (optional)"
+                            value={editedItemInstructions[item._id] || ''}
+                            onChangeText={(text) => updateItemInstructions(item._id, text)}
+                            multiline
+                            numberOfLines={2}
+                          />
+                        </View>
+                      );
+                    }
+                  })
+              )}
+            </View>
+
+            {/* Order Total */}
+            <View style={styles.totalSection}>
+              <Text style={styles.totalText}>
+                Updated Total: ₹{Object.entries(editedItems).reduce((total, [menuid, quantity]) => {
+                  const menuItem = menuItems.find(m => m._id === menuid);
+                  const existingItem = editingOrder?.items.find((item: any) => (item.menuid || item.id) === menuid);
+                  const price = menuItem?.price || existingItem?.price || 0;
+                  return total + (price * quantity);
+                }, 0).toFixed(0)}
+              </Text>
+            </View>
+
+            {/* Update Button */}
+            <TouchableOpacity
+              style={[styles.updateButton, isUpdating && styles.disabledButton]}
+              onPress={handleUpdateOrder}
+              disabled={isUpdating}
+            >
+              <Text style={styles.updateButtonText}>
+                {isUpdating ? 'Updating Order...' : 'Update Order'}
+              </Text>
+            </TouchableOpacity>
           </ScrollView>
         </View>
       </Modal>
@@ -564,7 +1035,7 @@ const styles = StyleSheet.create({
   },
   modalHeader: {
     backgroundColor: '#2C2C2C',
-    paddingTop: height * 0.06,
+    paddingTop: height * 0.03,
     paddingBottom: height * 0.025,
     borderBottomLeftRadius: 25,
     borderBottomRightRadius: 25,
@@ -726,5 +1197,187 @@ const styles = StyleSheet.create({
   guestWhatsapp: {
     fontSize: responsiveFontSize(11),
     color: '#666666',
+  },
+  updateOrderButton: {
+    backgroundColor: '#2C2C2C',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
+  updateOrderButtonText: {
+    color: '#FFFFFF',
+    fontSize: responsiveFontSize(12),
+    fontWeight: '600',
+  },
+  placeholder: {
+    width: 40,
+  },
+  customerInfoSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  customerInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: responsiveFontSize(14),
+    marginBottom: 12,
+    backgroundColor: '#F9F9F9',
+  },
+  currentItemsSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  editItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  editItemContainer: {
+    marginBottom: 12,
+  },
+  instructionsInput: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: responsiveFontSize(12),
+    backgroundColor: '#F9F9F9',
+    marginTop: 8,
+    textAlignVertical: 'top',
+  },
+  editItemInfo: {
+    flex: 1,
+  },
+  editItemName: {
+    fontSize: responsiveFontSize(14),
+    fontWeight: '600',
+    color: '#2C2C2C',
+  },
+  editItemPrice: {
+    fontSize: responsiveFontSize(12),
+    color: '#666666',
+    marginTop: 2,
+  },
+  quantityControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  quantityButton: {
+    backgroundColor: '#2C2C2C',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quantityText: {
+    fontSize: responsiveFontSize(14),
+    fontWeight: '600',
+    color: '#2C2C2C',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  addItemsSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  addItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  addItemInfo: {
+    flex: 1,
+  },
+  addItemName: {
+    fontSize: responsiveFontSize(14),
+    fontWeight: '600',
+    color: '#2C2C2C',
+  },
+  addItemPrice: {
+    fontSize: responsiveFontSize(12),
+    color: '#666666',
+    marginTop: 2,
+  },
+  addItemDescription: {
+    fontSize: responsiveFontSize(11),
+    color: '#999999',
+    marginTop: 2,
+  },
+  noItemsText: {
+    fontSize: responsiveFontSize(14),
+    color: '#666666',
+    textAlign: 'center',
+    padding: 20,
+  },
+  updateButton: {
+    backgroundColor: '#2C2C2C',
+    paddingVertical: 16,
+    borderRadius: 25,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  updateButtonText: {
+    color: '#FFFFFF',
+    fontSize: responsiveFontSize(16),
+    fontWeight: '600',
+  },
+  disabledButton: {
+    backgroundColor: '#CCCCCC',
+  },
+  totalSection: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#2C2C2C',
+  },
+  totalText: {
+    fontSize: responsiveFontSize(16),
+    fontWeight: 'bold',
+    color: '#2C2C2C',
+    textAlign: 'center',
+  },
+  menuLoadingContainer: {
+    alignItems: 'center',
+    padding: 20,
   },
 });

@@ -176,30 +176,46 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
         return;
       }
 
-      const response = await api.getAllTables(token);
+      // First, get all tables
+      const tablesResponse = await api.getAllTables(token);
+      // Then, get all active orders to check table occupancy
+      const ordersResponse = await api.getAllOrders(token);
 
-      // Backend returns { success: true, tables: [...] }
-      if (response?.success) {
-        const tablesData = Array.isArray(response.tables)
-          ? response.tables
-          : Array.isArray(response.data)
-          ? response.data
+      if (tablesResponse?.success && ordersResponse?.success) {
+        const tablesData = Array.isArray(tablesResponse.tables)
+          ? tablesResponse.tables
+          : Array.isArray(tablesResponse.data)
+          ? tablesResponse.data
           : [];
 
-        const formattedTables = tablesData.map((table: any) => ({
-          id: table.tableid || table._id || table.id || '',
-          tableid: table.tableid || table._id || table.id || '',
-          number: table.name || table.number || `Table ${table.tableid || table._id || table.id}`,
-          name: table.name || `Table ${table.tableid || table._id || table.id}`,
-          capacity: table.capacity || 4,
-          status: (table.status || 'available').toString()
-        }));
+        const activeOrders = Array.isArray(ordersResponse.orders) ? ordersResponse.orders : [];
+        
+        // Get occupied table IDs from active orders (orders that are not done/cancelled/served)
+        const occupiedTableIds = new Set(
+          activeOrders
+            .filter((order: any) => !['done', 'cancelled', 'served'].includes(order.status))
+            .map((order: any) => order.tableid)
+        );
+
+        const formattedTables = tablesData.map((table: any) => {
+          const tableid = table.tableid || table._id || table.id || '';
+          const isOccupiedByOrder = occupiedTableIds.has(tableid);
+          
+          return {
+            id: tableid,
+            tableid: tableid,
+            number: table.name || table.number || `Table ${tableid}`,
+            name: table.name || `Table ${tableid}`,
+            capacity: table.capacity || 4,
+            // Table is available only if it's not occupied by an active order
+            status: isOccupiedByOrder ? 'occupied' : (table.status || 'available').toString()
+          };
+        });
 
         setTables(formattedTables);
-        // Do not show success messages for normal loads; only surface errors per UX request
         setMessage(null);
       } else {
-        setMessage({ type: 'error', text: response?.message || 'Failed to load tables' });
+        setMessage({ type: 'error', text: 'Failed to load tables or orders' });
         setTables([]);
       }
     } catch (err: any) {
@@ -220,6 +236,11 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
   }));
 
   const handleTableSelect = (table: TableOption) => {
+    if (table.status?.toLowerCase() === 'occupied') {
+      setMessage({ type: 'error', text: `${table.number || table.name} is currently occupied by another order. Please select an available table.` });
+      return;
+    }
+    
     if (table.status?.toLowerCase() !== 'available') {
       setMessage({ type: 'error', text: `${table.number || table.name} is ${table.status}. Please select an available table.` });
       return;
@@ -368,9 +389,8 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
         items={getReviewItems()}
         specialInstruction={specialInstruction}
         guestInfo={guestInfo}
-        onConfirm={() => {
+        onConfirm={async () => {
           const reviewItems = getReviewItems();
-          const total = reviewItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
           
           if (reviewItems.length === 0) {
             Alert.alert('Error', 'Please add items to your order first.');
@@ -382,40 +402,60 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
             return;
           }
 
-          addOrder({
-            orderNumber,
-            tableNumber: selectedTable,
-            items: reviewItems.map(item => ({
-              id: item.id,
-              name: item.name,
-              price: item.price,
-              quantity: item.quantity,
-              instruction: item.instruction
-            })),
-            total,
-            status: 'preparing',
-            guestInfo: guestInfo
-          });
-
-          setOrderItems({});
-          setSpecialInstructions({});
-          setSpecialInstruction('');
-          setSelectedTable('');
-          setGuestInfo({ name: '', whatsapp: '' });
-          setShowReview(false);
-          
-          Alert.alert(
-            'Order Confirmed!', 
-            `Order ${orderNumber} has been placed successfully.`,
-            [
-              {
-                text: 'OK',
-                onPress: () => {
-                  if (onBack) onBack();
-                }
-              }
-            ]
+          // Find the selected table data
+          const selectedTableData = tables.find(table => 
+            (table.number || table.name) === selectedTable
           );
+
+          if (!selectedTableData) {
+            Alert.alert('Error', 'Selected table not found. Please select a table again.');
+            return;
+          }
+
+          try {
+            // Prepare order data for backend API
+            const orderData = {
+              tableid: selectedTableData.tableid || selectedTableData.id,
+              tableNumber: selectedTable,
+              customerName: guestInfo.name.trim(),
+              customerPhone: guestInfo.whatsapp.trim() || undefined,
+              items: reviewItems.map(item => ({
+                menuid: item.id,
+                notes: item.instruction || undefined,
+                quantity: item.quantity
+              })),
+              subtotal: getTotalPrice()
+            };
+
+            const success = await addOrder(orderData);
+            
+            if (success) {
+              // Clear form data
+              setOrderItems({});
+              setSpecialInstructions({});
+              setSpecialInstruction('');
+              setSelectedTable('');
+              setGuestInfo({ name: '', whatsapp: '' });
+              setShowReview(false);
+              
+              Alert.alert(
+                'Order Confirmed!', 
+                `Order has been placed successfully for ${selectedTable}.`,
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      if (onBack) onBack();
+                    }
+                  }
+                ]
+              );
+            } else {
+              Alert.alert('Error', 'Failed to place order. Please try again.');
+            }
+          } catch (err: any) {
+            Alert.alert('Error', err.message || 'An unexpected error occurred while placing the order.');
+          }
         }}
         onEdit={(itemId, newQuantity, newInstruction) => {
           setOrderItems(prev => ({
