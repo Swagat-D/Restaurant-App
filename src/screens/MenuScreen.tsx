@@ -9,31 +9,39 @@ import {
   TextInput,
   FlatList,
   Image,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import api from '../utils/api';
 
 const { width, height } = Dimensions.get('window');
 
 interface MenuItemProps {
-  id: string;
+  _id: string;
+  menuid: string;
   name: string;
   price: number;
   description: string;
   category: string;
-  status: 'available' | 'out-of-stock';
-  isVeg: boolean;
+  status: 'available' | 'unavailable';
+  isVegetarian: boolean;
   isSpicy: boolean;
   isRecommended?: boolean;
   orders?: number;
-  image?: string;
-  prepTime?: string;
+  img?: string;
+  icon?: string;
+  preparationTime?: number;
+  isActive: boolean;
+  isGlutenFree?: boolean;
 }
 
 interface CategoryProps {
-  id: string;
+  _id: string;
+  categoryid: string;
   name: string;
   icon: string;
-  items: MenuItemProps[];
 }
 
 const responsiveFontSize = (size: number) => {
@@ -42,228 +50,6 @@ const responsiveFontSize = (size: number) => {
   return Math.round(newSize);
 };
 
-// Enhanced Menu Data with Categories
-const MENU_CATEGORIES: CategoryProps[] = [
-  {
-    id: 'appetizers',
-    name: 'Appetizers',
-    icon: 'restaurant-outline',
-    items: [
-      {
-        id: 'app1',
-        name: 'Paneer Tikka',
-        price: 160,
-        description: 'Succulent cubes of cottage cheese marinated in spices and grilled to perfection',
-        category: 'appetizers',
-        status: 'available',
-        isVeg: true,
-        isSpicy: true,
-        isRecommended: true,
-        orders: 15,
-        prepTime: '15 min'
-      },
-      {
-        id: 'app2',
-        name: 'Chicken 65',
-        price: 180,
-        description: 'Spicy, deep-fried chicken dish with South Indian flavors',
-        category: 'appetizers',
-        status: 'available',
-        isVeg: false,
-        isSpicy: true,
-        orders: 12,
-        prepTime: '20 min'
-      },
-      {
-        id: 'app3',
-        name: 'Crispy Corn',
-        price: 120,
-        description: 'Golden fried corn kernels tossed with herbs and spices',
-        category: 'appetizers',
-        status: 'out-of-stock',
-        isVeg: true,
-        isSpicy: false,
-        orders: 8,
-        prepTime: '12 min'
-      }
-    ]
-  },
-  {
-    id: 'mains',
-    name: 'Main Course',
-    icon: 'nutrition-outline',
-    items: [
-      {
-        id: 'main1',
-        name: 'Butter Chicken',
-        price: 220,
-        description: 'Tender chicken pieces in a rich, creamy tomato-based sauce',
-        category: 'mains',
-        status: 'available',
-        isVeg: false,
-        isSpicy: false,
-        isRecommended: true,
-        orders: 25,
-        prepTime: '25 min'
-      },
-      {
-        id: 'main2',
-        name: 'Dal Makhani',
-        price: 140,
-        description: 'Rich and creamy black lentils slow-cooked with butter and cream',
-        category: 'mains',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 18,
-        prepTime: '20 min'
-      },
-      {
-        id: 'main3',
-        name: 'Biryani Special',
-        price: 250,
-        description: 'Fragrant basmati rice layered with tender meat and aromatic spices',
-        category: 'mains',
-        status: 'available',
-        isVeg: false,
-        isSpicy: true,
-        isRecommended: true,
-        orders: 22,
-        prepTime: '35 min'
-      },
-      {
-        id: 'main4',
-        name: 'Palak Paneer',
-        price: 160,
-        description: 'Fresh spinach curry with cottage cheese cubes',
-        category: 'mains',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 14,
-        prepTime: '18 min'
-      }
-    ]
-  },
-  {
-    id: 'breads',
-    name: 'Breads & Rice',
-    icon: 'leaf-outline',
-    items: [
-      {
-        id: 'bread1',
-        name: 'Butter Naan',
-        price: 45,
-        description: 'Soft and fluffy bread brushed with butter',
-        category: 'breads',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 30,
-        prepTime: '8 min'
-      },
-      {
-        id: 'bread2',
-        name: 'Garlic Naan',
-        price: 55,
-        description: 'Naan bread topped with fresh garlic and cilantro',
-        category: 'breads',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 20,
-        prepTime: '10 min'
-      },
-      {
-        id: 'bread3',
-        name: 'Jeera Rice',
-        price: 80,
-        description: 'Basmati rice tempered with cumin seeds',
-        category: 'breads',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 16,
-        prepTime: '15 min'
-      }
-    ]
-  },
-  {
-    id: 'desserts',
-    name: 'Desserts',
-    icon: 'ice-cream-outline',
-    items: [
-      {
-        id: 'dessert1',
-        name: 'Gulab Jamun',
-        price: 80,
-        description: 'Soft milk dumplings soaked in rose-flavored sugar syrup',
-        category: 'desserts',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 12,
-        prepTime: '5 min'
-      },
-      {
-        id: 'dessert2',
-        name: 'Kulfi',
-        price: 60,
-        description: 'Traditional Indian ice cream with cardamom and pistachios',
-        category: 'desserts',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 8,
-        prepTime: '2 min'
-      }
-    ]
-  },
-  {
-    id: 'beverages',
-    name: 'Beverages',
-    icon: 'cafe-outline',
-    items: [
-      {
-        id: 'bev1',
-        name: 'Masala Chai',
-        price: 25,
-        description: 'Traditional Indian tea brewed with aromatic spices',
-        category: 'beverages',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 40,
-        prepTime: '5 min'
-      },
-      {
-        id: 'bev2',
-        name: 'Fresh Lime Soda',
-        price: 35,
-        description: 'Refreshing lime juice with soda and mint',
-        category: 'beverages',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 15,
-        prepTime: '3 min'
-      },
-      {
-        id: 'bev3',
-        name: 'Mango Lassi',
-        price: 45,
-        description: 'Creamy yogurt drink blended with sweet mango pulp',
-        category: 'beverages',
-        status: 'available',
-        isVeg: true,
-        isSpicy: false,
-        orders: 18,
-        prepTime: '4 min'
-      }
-    ]
-  }
-];
-
 // Enhanced Menu Item Component
 const MenuItem = ({ item }: { item: MenuItemProps }) => (
   <TouchableOpacity style={styles.menuItem} activeOpacity={0.8}>
@@ -271,12 +57,12 @@ const MenuItem = ({ item }: { item: MenuItemProps }) => (
       <View style={styles.menuItemTitleRow}>
         <Text style={styles.menuItemName}>{item.name}</Text>
         <View style={styles.menuItemBadges}>
-          {item.isVeg && (
+          {item.isVegetarian && (
             <View style={[styles.dietBadge, styles.vegBadge]}>
               <View style={styles.vegDot} />
             </View>
           )}
-          {!item.isVeg && (
+          {!item.isVegetarian && (
             <View style={[styles.dietBadge, styles.nonVegBadge]}>
               <View style={styles.nonVegDot} />
             </View>
@@ -297,8 +83,8 @@ const MenuItem = ({ item }: { item: MenuItemProps }) => (
       <View style={styles.menuItemFooter}>
         <View style={styles.priceSection}>
           <Text style={styles.menuItemPrice}>₹{item.price}</Text>
-          {item.prepTime && (
-            <Text style={styles.prepTime}>• {item.prepTime}</Text>
+          {item.preparationTime && (
+            <Text style={styles.prepTime}>• {item.preparationTime} min</Text>
           )}
         </View>
         
@@ -339,7 +125,7 @@ const CategoryTab = ({
     activeOpacity={0.7}
   >
     <Ionicons 
-      name={category.icon as any} 
+      name="restaurant-outline" 
       size={20} 
       color={isActive ? '#FFFFFF' : '#666666'} 
     />
@@ -353,20 +139,101 @@ const CategoryTab = ({
 );
 
 export default function MenuScreen() {
-  const [selectedCategory, setSelectedCategory] = useState('appetizers');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [categories, setCategories] = useState<CategoryProps[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItemProps[]>([]);
   const [filteredItems, setFilteredItems] = useState<MenuItemProps[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  useEffect(() => {
+    if (selectedCategory || searchQuery.trim()) {
+      fetchMenuItems();
+    }
+  }, [selectedCategory, searchQuery]);
 
   useEffect(() => {
     filterMenuItems();
-  }, [selectedCategory, searchQuery]);
+  }, [menuItems, searchQuery]);
+
+  const fetchCategories = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const token = await AsyncStorage.getItem('auth_token');
+      
+      if (!token) {
+        setError('Authentication required');
+        return;
+      }
+
+      const response = await api.getCategories(token);
+      
+      if (response.success && response.categories) {
+        // Add "All" category at the beginning
+        const allCategories = [
+          { _id: 'all', categoryid: 'all', name: 'All', icon: 'apps-outline' },
+          ...response.categories
+        ];
+        setCategories(allCategories);
+        
+        // Load all menu items initially
+        setSelectedCategory('all');
+      } else {
+        setError(response.message || 'Failed to load categories');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Network error while loading categories');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchMenuItems = async () => {
+    try {
+      setLoadingItems(true);
+      setError(null);
+      const token = await AsyncStorage.getItem('auth_token');
+      
+      if (!token) {
+        setError('Authentication required');
+        return;
+      }
+
+      let response;
+      
+      if (selectedCategory === 'all') {
+        // Fetch all menu items
+        response = await api.getAllMenuItems(token);
+      } else {
+        // Fetch menu items for specific category
+        response = await api.getMenuItems(token, selectedCategory, undefined, searchQuery.trim() || undefined);
+      }
+      
+      if (response.success && response.menus) {
+        setMenuItems(response.menus);
+      } else {
+        setError(response.message || 'Failed to load menu items');
+        setMenuItems([]);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Network error while loading menu items');
+      setMenuItems([]);
+    } finally {
+      setLoadingItems(false);
+    }
+  };
 
   const filterMenuItems = () => {
-    const currentCategory = MENU_CATEGORIES.find(cat => cat.id === selectedCategory);
-    if (!currentCategory) return;
-
-    let items = currentCategory.items;
+    let items = [...menuItems];
     
+    // Filter by search query if provided
     if (searchQuery.trim()) {
       items = items.filter(item => 
         item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -374,23 +241,40 @@ export default function MenuScreen() {
       );
     }
     
+    // Filter by category if not "all"
+    if (selectedCategory !== 'all') {
+      items = items.filter(item => item.category === selectedCategory);
+    }
+    
     setFilteredItems(items);
   };
 
-  const getAllItems = () => {
-    return MENU_CATEGORIES.flatMap(category => category.items);
+  const handleCategorySelect = (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    setSearchQuery(''); // Clear search when changing category
   };
 
-  const getItemsBySearch = () => {
-    if (!searchQuery.trim()) return [];
-    
-    return getAllItems().filter(item => 
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchQuery.toLowerCase())
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#2C2C2C" />
+        <Text style={styles.loadingText}>Loading menu...</Text>
+      </View>
     );
-  };
+  }
 
-  const displayItems = searchQuery.trim() ? getItemsBySearch() : filteredItems;
+  if (error) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+        <Text style={styles.errorTitle}>Failed to load menu</Text>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={fetchCategories}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -422,12 +306,12 @@ export default function MenuScreen() {
           style={styles.categoryTabs}
           contentContainerStyle={styles.categoryTabsContent}
         >
-          {MENU_CATEGORIES.map((category) => (
+          {categories.map((category) => (
             <CategoryTab
-              key={category.id}
+              key={category._id}
               category={category}
-              isActive={selectedCategory === category.id}
-              onPress={() => setSelectedCategory(category.id)}
+              isActive={selectedCategory === category._id}
+              onPress={() => handleCategorySelect(category._id)}
             />
           ))}
         </ScrollView>
@@ -438,31 +322,38 @@ export default function MenuScreen() {
         {searchQuery.trim() && (
           <View style={styles.searchResultsHeader}>
             <Text style={styles.searchResultsText}>
-              {displayItems.length} results for "{searchQuery}"
+              {filteredItems.length} results for "{searchQuery}"
             </Text>
           </View>
         )}
         
-        <View style={styles.menuList}>
-          {displayItems.length > 0 ? (
-            displayItems.map((item) => (
-              <MenuItem key={item.id} item={item} />
-            ))
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="restaurant-outline" size={48} color="#CCCCCC" />
-              <Text style={styles.emptyStateTitle}>
-                {searchQuery.trim() ? 'No items found' : 'No items in this category'}
-              </Text>
-              <Text style={styles.emptyStateText}>
-                {searchQuery.trim() 
-                  ? 'Try searching with different keywords' 
-                  : 'Items will be added soon'
-                }
-              </Text>
-            </View>
-          )}
-        </View>
+        {loadingItems ? (
+          <View style={styles.centerContent}>
+            <ActivityIndicator size="large" color="#2C2C2C" />
+            <Text style={styles.loadingText}>Loading items...</Text>
+          </View>
+        ) : (
+          <View style={styles.menuList}>
+            {filteredItems.length > 0 ? (
+              filteredItems.map((item) => (
+                <MenuItem key={item._id} item={item} />
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="restaurant-outline" size={48} color="#CCCCCC" />
+                <Text style={styles.emptyStateTitle}>
+                  {searchQuery.trim() ? 'No items found' : 'No items in this category'}
+                </Text>
+                <Text style={styles.emptyStateText}>
+                  {searchQuery.trim() 
+                    ? 'Try searching with different keywords' 
+                    : 'Items will be added soon'
+                  }
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -697,5 +588,44 @@ const styles = StyleSheet.create({
     color: '#666666',
     textAlign: 'center',
     paddingHorizontal: width * 0.1,
+  },
+  // Loading and Error States
+  centerContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: width * 0.1,
+  },
+  loadingText: {
+    fontSize: responsiveFontSize(16),
+    color: '#666666',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  errorTitle: {
+    fontSize: responsiveFontSize(18),
+    fontWeight: 'bold',
+    color: '#EF4444',
+    marginTop: 12,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: responsiveFontSize(14),
+    color: '#666666',
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: width * 0.1,
+  },
+  retryButton: {
+    backgroundColor: '#2C2C2C',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: responsiveFontSize(16),
+    fontWeight: '600',
   },
 });

@@ -78,6 +78,39 @@ export const updateTableStatus = async (tableid: string, status: string, token: 
   return res.data;
 };
 
+// Category APIs
+export const getCategories = async (token: string): Promise<ApiResponse> => {
+  const url = `${BASE_URL}/api/category`;
+  const res = await axios.get(url, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data;
+};
+
+// Menu APIs
+export const getMenuItems = async (token: string, categoryid?: string, status?: 'available' | 'unavailable', search?: string): Promise<ApiResponse> => {
+  const url = `${BASE_URL}/api/menu`;
+  const params: any = {};
+  
+  if (categoryid) params.categoryid = categoryid;
+  if (status) params.status = status;
+  if (search) params.search = search;
+  
+  const res = await axios.get(url, {
+    params,
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data;
+};
+
+export const getAllMenuItems = async (token: string): Promise<ApiResponse> => {
+  const url = `${BASE_URL}/api/menu`;
+  const res = await axios.get(url, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  return res.data;
+};
+
 export default {
   sendOtp,
   verifyOtp,
@@ -88,4 +121,7 @@ export default {
   getTablesByStatus,
   getTableById,
   updateTableStatus,
+  getCategories,
+  getMenuItems,
+  getAllMenuItems,
 };

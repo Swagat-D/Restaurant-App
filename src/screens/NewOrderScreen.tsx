@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Modal, FlatList, Image, StatusBar, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Modal, FlatList, Image, StatusBar, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import OrderReviewScreen from './OrderReviewScreen';
 import { useOrders } from '../context/OrderContext';
@@ -18,12 +18,19 @@ interface NewOrderScreenProps {
 }
 
 interface MenuItem {
-  id: string;
+  _id: string;
+  menuid: string;
   name: string;
   description: string;
   price: number;
-  image: string;
+  img?: string;
+  icon?: string;
   category: string;
+  status: 'available' | 'unavailable';
+  isVegetarian: boolean;
+  isSpicy: boolean;
+  preparationTime?: number;
+  isActive?: boolean;
 }
 
 interface TableOption {
@@ -66,13 +73,98 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
   const [tables, setTables] = useState<TableOption[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
   const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  
+  // New states for menu data
+  const [categories, setCategories] = useState<any[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [loadingMenu, setLoadingMenu] = useState(true);
+  const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItem[]>([]);
 
   const { addOrder } = useOrders();
   const orderNumber = `ORD${Date.now().toString().slice(-4)}`;
 
   useEffect(() => {
     fetchTables();
+    fetchCategories();
+    fetchMenuItems();
   }, []);
+
+  useEffect(() => {
+    filterMenuItems();
+  }, [selectedCategory, searchText, menuItems]);
+
+  const fetchCategories = async () => {
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        setMessage({ type: 'error', text: 'Authentication required' });
+        return;
+      }
+
+      const response = await api.getCategories(token);
+      if (response?.success && response.categories) {
+        const allCategories = [
+          { _id: 'all', name: 'All' },
+          ...response.categories
+        ];
+        setCategories(allCategories);
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'Failed to load categories' });
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.message || 'Network error while loading categories' });
+    }
+  };
+
+  const fetchMenuItems = async () => {
+    try {
+      setLoadingMenu(true);
+      const token = await AsyncStorage.getItem('auth_token');
+      if (!token) {
+        setMessage({ type: 'error', text: 'Authentication required' });
+        return;
+      }
+
+      const response = await api.getAllMenuItems(token);
+      if (response?.success && response.menus) {
+        // Filter only available items for ordering
+        const availableItems = response.menus.filter((item: MenuItem) => 
+          item.status === 'available' && item.isActive
+        );
+        setMenuItems(availableItems);
+      } else {
+        setMessage({ type: 'error', text: response?.message || 'Failed to load menu items' });
+        setMenuItems([]);
+      }
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err?.message || 'Network error while loading menu items' });
+      setMenuItems([]);
+    } finally {
+      setLoadingMenu(false);
+    }
+  };
+
+  const filterMenuItems = () => {
+    let items = [...menuItems];
+    
+    // Filter by category
+    if (selectedCategory !== 'All') {
+      const selectedCat = categories.find(cat => cat.name === selectedCategory);
+      if (selectedCat && selectedCat._id !== 'all') {
+        items = items.filter(item => item.category === selectedCat._id);
+      }
+    }
+    
+    // Filter by search text
+    if (searchText.trim()) {
+      items = items.filter(item => 
+        item.name.toLowerCase().includes(searchText.toLowerCase()) ||
+        item.description.toLowerCase().includes(searchText.toLowerCase())
+      );
+    }
+    
+    setFilteredMenuItems(items);
+  };
 
   const fetchTables = async () => {
     setLoadingTables(true);
@@ -117,25 +209,6 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
       setLoadingTables(false);
     }
   };
-
-  const categories = ['All', 'Appetizers', 'Main Course', 'Desserts', 'Beverages'];
-
-  const menuItems: MenuItem[] = [
-    { id: '1', name: 'Butter Chicken', description: 'Creamy chicken in rich tomato sauce', price: 180, image: '🍛', category: 'Main Course' },
-    { id: '2', name: 'Dal Makhani', description: 'Rich black lentils in creamy gravy', price: 120, image: '🍲', category: 'Main Course' },
-    { id: '3', name: 'Paneer Tikka', description: 'Grilled cottage cheese with spices', price: 160, image: '🧀', category: 'Appetizers' },
-    { id: '4', name: 'Naan Bread', description: 'Soft, fluffy Indian bread', price: 40, image: '🍞', category: 'Appetizers' },
-    { id: '5', name: 'Biryani', description: 'Fragrant basmati rice with spices', price: 200, image: '🍚', category: 'Main Course' },
-    { id: '6', name: 'Gulab Jamun', description: 'Sweet milk dumplings in syrup', price: 80, image: '🍯', category: 'Desserts' },
-    { id: '7', name: 'Mango Lassi', description: 'Refreshing yogurt drink', price: 60, image: '🥤', category: 'Beverages' },
-    { id: '8', name: 'Tandoori Roti', description: 'Whole wheat flatbread', price: 25, image: '🫓', category: 'Appetizers' },
-  ];
-
-  const filteredMenuItems = menuItems.filter(item => {
-    const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-    const matchesSearch = item.name.toLowerCase().includes(searchText.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
 
   const availableTables = tables.filter(table => 
     table.status?.toLowerCase() === 'available'
@@ -223,7 +296,7 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
 
   const getTotalPrice = () => {
     return Object.entries(orderItems).reduce((total, [itemId, count]) => {
-      const item = menuItems.find(m => m.id === itemId);
+      const item = menuItems.find(m => m._id === itemId);
       return total + (item ? item.price * count : 0);
     }, 0);
   };
@@ -231,7 +304,9 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
   const renderMenuItem = ({ item }: { item: MenuItem }) => (
     <View style={styles.menuItemCard}>
       <View style={styles.menuItemImageContainer}>
-        <Text style={styles.menuItemImage}>{item.image}</Text>
+        <Text style={styles.menuItemImage}>
+          {item.isVegetarian ? '🥗' : '🍖'}
+        </Text>
       </View>
       <View style={styles.menuItemInfo}>
         <Text style={styles.menuItemName}>{item.name}</Text>
@@ -239,18 +314,18 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
         <View style={styles.menuItemFooter}>
           <Text style={styles.menuItemPrice}>₹ {item.price.toFixed(2)}</Text>
           <View style={styles.quantityControls}>
-            {orderItems[item.id] ? (
+            {orderItems[item._id] ? (
               <>
                 <TouchableOpacity 
                   style={styles.quantityButton} 
-                  onPress={() => handleRemoveItem(item.id)}
+                  onPress={() => handleRemoveItem(item._id)}
                 >
                   <Text style={styles.quantityButtonText}>-</Text>
                 </TouchableOpacity>
-                <Text style={styles.quantityText}>{orderItems[item.id]}</Text>
+                <Text style={styles.quantityText}>{orderItems[item._id]}</Text>
                 <TouchableOpacity 
                   style={styles.quantityButton} 
-                  onPress={() => handleAddItem(item.id)}
+                  onPress={() => handleAddItem(item._id)}
                 >
                   <Text style={styles.quantityButtonText}>+</Text>
                 </TouchableOpacity>
@@ -258,7 +333,7 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
             ) : (
               <TouchableOpacity 
                 style={styles.addButton} 
-                onPress={() => handleAddItem(item.id)}
+                onPress={() => handleAddItem(item._id)}
               >
                 <Ionicons name="add" size={20} color="#FFFFFF" />
               </TouchableOpacity>
@@ -272,10 +347,10 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
   const getReviewItems = (): ReviewItem[] => {
     return Object.entries(orderItems)
       .map(([itemId, qty]) => {
-        const item = menuItems.find(m => m.id === itemId);
+        const item = menuItems.find(m => m._id === itemId);
         if (!item) return null;
         return {
-          id: item.id,
+          id: item._id,
           name: item.name,
           price: item.price,
           quantity: qty,
@@ -445,18 +520,18 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryContainer}>
             {categories.map((category) => (
               <TouchableOpacity
-                key={category}
+                key={category._id}
                 style={[
                   styles.categoryTab,
-                  selectedCategory === category && styles.activeCategoryTab
+                  selectedCategory === category.name && styles.activeCategoryTab
                 ]}
-                onPress={() => setSelectedCategory(category)}
+                onPress={() => setSelectedCategory(category.name)}
               >
                 <Text style={[
                   styles.categoryTabText,
-                  selectedCategory === category && styles.activeCategoryTabText
+                  selectedCategory === category.name && styles.activeCategoryTabText
                 ]}>
-                  {category}
+                  {category.name}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -465,16 +540,28 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
 
         {/* Menu Items */}
         <View style={[styles.section, styles.sectionCompact, {paddingTop: 0}]}> 
-          <Text style={styles.sectionTitle}>What's New?</Text>
+          <Text style={styles.sectionTitle}>Menu Items</Text>
+          {loadingMenu ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#2C2C2C" />
+              <Text style={styles.loadingText}>Loading menu...</Text>
+            </View>
+          ) : filteredMenuItems.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No items found</Text>
+              <Text style={styles.emptySubtext}>Try different category or search terms</Text>
+            </View>
+          ) : (
           <FlatList
             data={filteredMenuItems}
             renderItem={renderMenuItem}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => item._id}
             numColumns={2}
             columnWrapperStyle={styles.menuRow}
             scrollEnabled={false}
             contentContainerStyle={{ paddingBottom: 16 }}
           />
+          )}
       {/* Special Instructions Modal */}
       <Modal
         visible={showInstructionModal}
@@ -1173,5 +1260,22 @@ const styles = StyleSheet.create({
   statusReserved: {
     color: '#F59E0B',
     fontWeight: '600',
+  },
+  // Empty States
+  emptyContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    fontSize: responsiveFontSize(16),
+    fontWeight: '600',
+    color: '#666666',
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: responsiveFontSize(14),
+    color: '#999999',
+    textAlign: 'center',
+    marginTop: 4,
   },
 });
