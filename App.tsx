@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
+import * as Font from 'expo-font';
+import { Ionicons, MaterialIcons, FontAwesome } from '@expo/vector-icons';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import { OrderProvider } from './src/context/OrderContext';
@@ -8,7 +10,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './src/utils/api';
 
 const { width, height } = Dimensions.get('window');
-
 type AppState = 'splash' | 'login' | 'dashboard';
 
 const responsiveFontSize = (size: number) => {
@@ -20,17 +21,32 @@ const responsiveFontSize = (size: number) => {
 export default function App() {
   const [appState, setAppState] = useState<AppState>('splash');
   const [userEmail, setUserEmail] = useState('');
+  const [fontsLoaded, setFontsLoaded] = useState(false);
   const appHeight = useNavigationHeight();
 
   useEffect(() => {
-    const initializeApp = async () => {
+    const loadResources = async () => {
       try {
+        // ✅ Load fonts for all icon packs
+        await Font.loadAsync({
+          ...Ionicons.font,
+          ...MaterialIcons.font,
+          ...FontAwesome.font,
+        });
+
+        setFontsLoaded(true);
+
+        // ✅ Check login session
         const token = await AsyncStorage.getItem('auth_token');
         if (token) {
           try {
             const response = await api.verifyToken(token);
             if (response?.success) {
-              const email = response.data?.email || response.email || response?.data?.employee?.email || '';
+              const email =
+                response.data?.email ||
+                response.email ||
+                response?.data?.employee?.email ||
+                '';
               setUserEmail(email);
               setAppState('dashboard');
               return;
@@ -40,18 +56,19 @@ export default function App() {
           }
         }
 
+        // fallback to login screen after splash
         setTimeout(() => {
           setAppState('login');
         }, 1800);
       } catch (error) {
-        console.log('Error checking login session:', error);
+        console.log('Error initializing app:', error);
         setTimeout(() => {
           setAppState('login');
         }, 1800);
       }
     };
 
-    initializeApp();
+    loadResources();
   }, []);
 
   const handleEmailVerify = (email: string) => {
@@ -63,7 +80,11 @@ export default function App() {
     try {
       const response = await api.verifyToken(token);
       if (response?.success) {
-        const email = response.data?.email || response.email || response?.data?.employee?.email || '';
+        const email =
+          response.data?.email ||
+          response.email ||
+          response?.data?.employee?.email ||
+          '';
         if (email) setUserEmail(email);
       }
       setAppState('dashboard');
@@ -85,6 +106,20 @@ export default function App() {
     }
   };
 
+  // Wait for fonts
+  if (!fontsLoaded) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Image
+          source={require('./assets/logo.png')}
+          style={{ width: 100, height: 100 }}
+          resizeMode="contain"
+        />
+        <Text style={{ fontSize: 16, color: '#555', marginTop: 10 }}>Loading resources...</Text>
+      </View>
+    );
+  }
+
   if (appState === 'splash') {
     return (
       <View style={[styles.container, { height: appHeight }]}>
@@ -98,7 +133,6 @@ export default function App() {
           </View>
 
           <Text style={styles.appName}>Restaurant Manager</Text>
-          
           <Text style={styles.tagline}>Streamline Your Restaurant Operations 🍽️</Text>
         </View>
 
@@ -125,10 +159,7 @@ export default function App() {
   if (appState === 'login') {
     return (
       <View style={[styles.container, { height: appHeight }]}>
-        <LoginScreen 
-          onEmailVerify={handleEmailVerify} 
-          onOTPVerify={handleOTPVerify}
-        />
+        <LoginScreen onEmailVerify={handleEmailVerify} onOTPVerify={handleOTPVerify} />
       </View>
     );
   }
@@ -136,10 +167,7 @@ export default function App() {
   if (appState === 'dashboard') {
     return (
       <OrderProvider>
-        <DashboardScreen 
-          userEmail={userEmail}
-          onLogout={handleLogout}
-        />
+        <DashboardScreen userEmail={userEmail} onLogout={handleLogout} />
       </OrderProvider>
     );
   }
@@ -160,8 +188,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: '5%',
   },
   logoContainer: {
-    width: width * 0.35, 
-    height: width * 0.35, 
+    width: width * 0.35,
+    height: width * 0.35,
     justifyContent: 'center',
     marginBottom: -(height * 0.03),
     alignItems: 'center',
