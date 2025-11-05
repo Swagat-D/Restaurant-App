@@ -34,8 +34,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "bbe8cf44-78cd-478a-a82a-c7b9952dc1fe"
+        "projectId": "3192f161-8ef4-4413-ab84-fcade97f3eaf"
       }
-    }
+    },
+    "owner": "aniketboss"
   }
 }

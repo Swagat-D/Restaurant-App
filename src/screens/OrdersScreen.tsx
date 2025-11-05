@@ -45,16 +45,15 @@ const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, o
     if (status === 'pending') return 'preparing';
     if (status === 'preparing') return 'ready';
     if (status === 'ready') return 'served';
-    if (status === 'served') return 'done';
-    return 'done';
+    // No next status for served - employees cannot mark as done
+    return status;
   };
 
   const getButtonText = () => {
     if (status === 'pending') return 'Start Preparing';
     if (status === 'preparing') return 'Mark Ready';
     if (status === 'ready') return 'Mark Served';
-    if (status === 'served') return 'Mark Done';
-    return 'Done';
+    return '';
   };
 
   const handleStatusUpdate = () => {
@@ -138,15 +137,14 @@ const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, o
               </Text>
             </TouchableOpacity>
           )}
-          {/* Show status update button for non-done orders */}
-          {status !== 'done' && (
+          {/* Show status update button for non-done orders, but hide for served orders */}
+          {status !== 'done' && status !== 'served' && (
             <TouchableOpacity
               style={[
                 styles.actionButton,
                 status === 'pending' && styles.pendingButton,
                 status === 'preparing' && styles.preparingButton,
                 status === 'ready' && styles.readyButton,
-                status === 'served' && styles.servedButton,
                 isUpdating && styles.disabledButton,
               ]}
               onPress={handleStatusUpdate}
