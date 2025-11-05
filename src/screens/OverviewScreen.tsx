@@ -8,10 +8,12 @@ import {
   Dimensions,
   Modal,
   FlatList,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import NewOrderScreen from './NewOrderScreen';
 import { useOrders } from '../context/OrderContext';
+import CustomPopup from '../components/CustomPopup';
 
 const { width, height } = Dimensions.get('window');
 
@@ -86,8 +88,21 @@ interface OverviewScreenProps {
 }
 
 export default function OverviewScreen({ onNewOrder, onNavigateToTables }: OverviewScreenProps) {
-  const { orders, updateOrderStatus } = useOrders();
+  const { orders, updateOrderStatus, refreshOrders } = useOrders();
   const [showAllOrdersModal, setShowAllOrdersModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showKitchenPopup, setShowKitchenPopup] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshOrders();
+    } catch (error) {
+      console.error('Error refreshing orders:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   
   // Filter out only cancelled and done orders from active orders 
   // Active = orders that are still editable (pending, preparing, ready, served)
@@ -102,11 +117,18 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
     const orderDate = order.timestamp ? order.timestamp.toDateString() : new Date(order.orderDate || Date.now()).toDateString();
     return orderDate === today; // Include ALL orders of today
   });
+
+  // Filter out cancelled orders for revenue calculation
+  const todayValidOrders = todayOrders.filter(order => order.status !== 'cancelled');
   
-  const todayRevenue = todayOrders.reduce((sum, order) => sum + (order.total || order.totalAmount || 0), 0);
+  const todayRevenue = todayValidOrders.reduce((sum, order) => sum + (order.total || order.totalAmount || 0), 0);
 
   const handleStatusUpdate = (orderId: string, newStatus: 'preparing' | 'ready' | 'served') => {
     updateOrderStatus(orderId, newStatus);
+  };
+
+  const handleKitchenPress = () => {
+    setShowKitchenPopup(true);
   };
 
   const statsData = [
@@ -133,7 +155,7 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
     },
     { 
       title: "Avg Order", 
-      value: todayOrders.length > 0 ? `₹${(todayRevenue / todayOrders.length).toFixed(0)}` : '₹0', 
+      value: todayValidOrders.length > 0 ? `₹${(todayRevenue / todayValidOrders.length).toFixed(0)}` : '₹0', 
       subtitle: "Per order", 
       color: "#6C63FF",
       icon: "trending-up-outline"
@@ -141,7 +163,18 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
   ];
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      style={styles.container} 
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={['#2C2C2C']}
+          tintColor="#2C2C2C"
+        />
+      }
+    >
       {/* Stats Cards - Horizontal Scroll */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Today's Overview</Text>
@@ -212,7 +245,7 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
             <Ionicons name="add-circle-outline" size={28} color="#2C2C2C" />
             <Text style={styles.quickActionTitle}>New Order</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionCard}>
+          <TouchableOpacity style={styles.quickActionCard} onPress={handleKitchenPress} activeOpacity={0.8}>
             <Ionicons name="restaurant-outline" size={28} color="#2C2C2C" />
             <Text style={styles.quickActionTitle}>Kitchen</Text>
           </TouchableOpacity>
@@ -305,6 +338,22 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
           )}
         </View>
       </Modal>
+
+      <CustomPopup
+        visible={showKitchenPopup}
+        onClose={() => setShowKitchenPopup(false)}
+        title="Kitchen Section 👨‍🍳"
+        message="We'll be back soon with more features of kitchen section. Thank you for your patience!"
+        icon="restaurant-outline"
+        iconColor="#FF6B35"
+        buttons={[
+          {
+            text: 'Got it!',
+            onPress: () => setShowKitchenPopup(false),
+            style: 'default'
+          }
+        ]}
+      />
     </ScrollView>
   );
 }

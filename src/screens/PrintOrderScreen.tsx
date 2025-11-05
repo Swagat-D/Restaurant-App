@@ -7,10 +7,10 @@ import {
   Dimensions,
   TouchableOpacity,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Order } from '../context/OrderContext';
+import CustomPopup from '../components/CustomPopup';
 
 const { width, height } = Dimensions.get('window');
 
@@ -29,6 +29,14 @@ const responsiveFontSize = (size: number) => {
 export default function PrintOrderScreen({ order, onBack, onPrintComplete }: PrintOrderScreenProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [printCompleted, setPrintCompleted] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupConfig, setPopupConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'checkmark-circle',
+    iconColor: '#28A745',
+    onConfirm: () => {}
+  });
 
   const handlePrint = async () => {
     setIsPrinting(true);
@@ -99,20 +107,29 @@ export default function PrintOrderScreen({ order, onBack, onPrintComplete }: Pri
         setPrintCompleted(true);
         onPrintComplete();
         
-        Alert.alert(
-          'Print Request Sent',
-          'Order has been sent to the printer. Please check your printer for the receipt.',
-          [{ text: 'OK', onPress: onBack }]
-        );
+        setPopupConfig({
+          title: 'Print Request Sent',
+          message: 'Order has been sent to the printer. Please check your printer for the receipt.',
+          icon: 'checkmark-circle',
+          iconColor: '#28A745',
+          onConfirm: () => {
+            setShowPopup(false);
+            onBack();
+          }
+        });
+        setShowPopup(true);
       }, 1000);
       
     } catch (error) {
       setIsPrinting(false);
-      Alert.alert(
-        'Print Error',
-        'Failed to send print request. Please try again or check your printer connection.',
-        [{ text: 'OK' }]
-      );
+      setPopupConfig({
+        title: 'Print Error',
+        message: 'Failed to send print request. Please try again or check your printer connection.',
+        icon: 'alert-circle',
+        iconColor: '#DC3545',
+        onConfirm: () => setShowPopup(false)
+      });
+      setShowPopup(true);
     }
   };
 
@@ -272,6 +289,22 @@ export default function PrintOrderScreen({ order, onBack, onPrintComplete }: Pri
           )}
         </TouchableOpacity>
       </View>
+
+      <CustomPopup
+        visible={showPopup}
+        onClose={() => setShowPopup(false)}
+        title={popupConfig.title}
+        message={popupConfig.message}
+        icon={popupConfig.icon}
+        iconColor={popupConfig.iconColor}
+        buttons={[
+          {
+            text: 'OK',
+            onPress: popupConfig.onConfirm,
+            style: 'default'
+          }
+        ]}
+      />
     </View>
   );
 }

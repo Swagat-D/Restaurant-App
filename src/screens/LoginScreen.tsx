@@ -37,6 +37,7 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
   const [timer, setTimer] = useState(30);
   const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
   const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  const [hasOTPError, setHasOTPError] = useState(false); // Track if OTP verification failed
   
   const inputRefs = useRef<(TextInput | null)[]>([]);
   
@@ -48,6 +49,7 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
     if (otpString.length !== 6) return;
 
     setIsVerifyingOTP(true);
+    setHasOTPError(false); // Reset error state before verification
     try {
       // call verify-otp endpoint
       const response = await api.verifyOtp(email.trim(), otpString);
@@ -60,22 +62,26 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
           setMessage({ type: 'success', text: response.message || 'Successfully signed in' });
           onOTPVerify(token);
         } else {
+          setHasOTPError(true); // Set error state
           setMessage({ type: 'error', text: response.message || 'Authentication failed' });
         }
       } else {
+        setHasOTPError(true); // Set error state
         setMessage({ type: 'error', text: response?.message || 'Invalid code or user not registered' });
       }
     } catch (err: any) {
       setIsVerifyingOTP(false);
+      setHasOTPError(true); // Set error state
       setMessage({ type: 'error', text: err?.message || 'Network error while verifying code' });
     }
   };
 
   useEffect(() => {
-    if (isOTPComplete && showOTP && !isVerifyingOTP) {
+    // Only auto-submit if OTP is complete, showing OTP screen, not verifying, and no previous error
+    if (isOTPComplete && showOTP && !isVerifyingOTP && !hasOTPError) {
       handleOTPSubmit();
     }
-  }, [isOTPComplete, showOTP, isVerifyingOTP]);
+  }, [isOTPComplete, showOTP, isVerifyingOTP, hasOTPError]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -119,6 +125,12 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
   };
 
   const handleOtpChange = (value: string, index: number) => {
+    // Clear error state when user starts editing OTP after an error
+    if (hasOTPError) {
+      setHasOTPError(false);
+      setMessage(null);
+    }
+
     if (value.length === 6 && /^\d{6}$/.test(value)) {
       const newOtp = value.split('');
       setOtp(newOtp);
@@ -149,6 +161,7 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
     // call send-otp again
     setMessage(null);
     setOtp(['', '', '', '', '', '']);
+    setHasOTPError(false); // Reset error state
     setIsLoading(true);
     api.sendOtp(email.trim())
       .then((response) => {
@@ -224,7 +237,7 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
                       keyboardType="numeric"
                       maxLength={6} // Allow paste of 6 digits
                       textAlign="center"
-                      editable={!isVerifyingOTP}
+                      editable={!isVerifyingOTP} // Allow editing when not verifying (including after errors)
                     />
                   ))}
                 </View>
@@ -249,19 +262,19 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
               </View>
             )}
 
-            {(!showOTP || !isOTPComplete) && (
+            {(!showOTP || !isOTPComplete || hasOTPError) && (
               <TouchableOpacity
                 style={[
                   styles.actionButton,
                   (!isEmailValid && !showOTP) || 
-                  (showOTP && (!isOTPComplete || isVerifyingOTP)) || 
-                  isLoading ? styles.actionButtonDisabled : null
+                  (showOTP && !isOTPComplete && !hasOTPError) || 
+                  isLoading || isVerifyingOTP ? styles.actionButtonDisabled : null
                 ]}
                 onPress={showOTP ? handleOTPSubmit : handleEmailSubmit}
                 disabled={
                   (!isEmailValid && !showOTP) || 
-                  (showOTP && (!isOTPComplete || isVerifyingOTP)) || 
-                  isLoading
+                  (showOTP && !isOTPComplete && !hasOTPError) || 
+                  isLoading || isVerifyingOTP
                 }
                 activeOpacity={0.8}
               >
@@ -273,8 +286,8 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
               </TouchableOpacity>
             )}
 
-            {/* Show verifying message when OTP is complete */}
-            {showOTP && isOTPComplete && (
+            {/* Show verifying message when OTP is complete and no error */}
+            {showOTP && isOTPComplete && !hasOTPError && (
               <View style={styles.verifyingContainer}>
                 <Text style={styles.verifyingText}>
                   {isVerifyingOTP ? 'Verifying your code...' : 'Code verified! ✓'}

@@ -125,8 +125,7 @@ const OrderItem = ({ orderId, orderNumber, table, items, amount, status, time, o
           </Text>
         </View>
         <View style={styles.orderButtonsContainer}>
-          {/* Show cancel button only for pending orders */}
-          {status === 'pending' && (
+          {status === 'pending' && order.createdAt === order.updatedAt && (
             <TouchableOpacity
               style={[styles.cancelButton, isUpdating && styles.disabledButton]}
               onPress={handleCancel}

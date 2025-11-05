@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Modal, FlatList, Image, StatusBar, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Dimensions, Modal, FlatList, Image, StatusBar, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import OrderReviewScreen from './OrderReviewScreen';
 import { useOrders } from '../context/OrderContext';
+import CustomPopup from '../components/CustomPopup';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../utils/api';
 
@@ -78,6 +79,16 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
   const [categories, setCategories] = useState<any[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loadingMenu, setLoadingMenu] = useState(true);
+  
+  // Popup state
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupConfig, setPopupConfig] = useState({
+    title: '',
+    message: '',
+    icon: 'information-circle-outline',
+    iconColor: '#2C2C2C',
+    onConfirm: () => setShowPopup(false)
+  });
   const [filteredMenuItems, setFilteredMenuItems] = useState<MenuItem[]>([]);
 
   const { addOrder } = useOrders();
@@ -393,12 +404,26 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
           const reviewItems = getReviewItems();
           
           if (reviewItems.length === 0) {
-            Alert.alert('Error', 'Please add items to your order first.');
+            setPopupConfig({
+              title: 'Error',
+              message: 'Please add items to your order first.',
+              icon: 'alert-circle',
+              iconColor: '#DC3545',
+              onConfirm: () => setShowPopup(false)
+            });
+            setShowPopup(true);
             return;
           }
           
           if (!selectedTable) {
-            Alert.alert('Error', 'Please select a table first.');
+            setPopupConfig({
+              title: 'Error',
+              message: 'Please select a table first.',
+              icon: 'alert-circle',
+              iconColor: '#DC3545',
+              onConfirm: () => setShowPopup(false)
+            });
+            setShowPopup(true);
             return;
           }
 
@@ -408,7 +433,14 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
           );
 
           if (!selectedTableData) {
-            Alert.alert('Error', 'Selected table not found. Please select a table again.');
+            setPopupConfig({
+              title: 'Error',
+              message: 'Selected table not found. Please select a table again.',
+              icon: 'alert-circle',
+              iconColor: '#DC3545',
+              onConfirm: () => setShowPopup(false)
+            });
+            setShowPopup(true);
             return;
           }
 
@@ -438,23 +470,36 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
               setGuestInfo({ name: '', whatsapp: '' });
               setShowReview(false);
               
-              Alert.alert(
-                'Order Confirmed!', 
-                `Order has been placed successfully for ${selectedTable}.`,
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      if (onBack) onBack();
-                    }
-                  }
-                ]
-              );
+              setPopupConfig({
+                title: 'Order Confirmed!',
+                message: `Order has been placed successfully for ${selectedTable}.`,
+                icon: 'checkmark-circle',
+                iconColor: '#28A745',
+                onConfirm: () => {
+                  setShowPopup(false);
+                  if (onBack) onBack();
+                }
+              });
+              setShowPopup(true);
             } else {
-              Alert.alert('Error', 'Failed to place order. Please try again.');
+              setPopupConfig({
+                title: 'Error',
+                message: 'Failed to place order. Please try again.',
+                icon: 'alert-circle',
+                iconColor: '#DC3545',
+                onConfirm: () => setShowPopup(false)
+              });
+              setShowPopup(true);
             }
           } catch (err: any) {
-            Alert.alert('Error', err.message || 'An unexpected error occurred while placing the order.');
+            setPopupConfig({
+              title: 'Error',
+              message: err.message || 'An unexpected error occurred while placing the order.',
+              icon: 'alert-circle',
+              iconColor: '#DC3545',
+              onConfirm: () => setShowPopup(false)
+            });
+            setShowPopup(true);
           }
         }}
         onEdit={(itemId, newQuantity, newInstruction) => {
@@ -503,7 +548,6 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.greetingText}>New Order</Text>
-            <Text style={styles.subtitleText}>Order #{orderNumber}</Text>
           </View>
           <TouchableOpacity style={styles.menuButton}>
             <Ionicons name="menu-outline" size={24} color="#FFFFFF" />
@@ -786,6 +830,22 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
           </View>
         </View>
       </Modal>
+
+      <CustomPopup
+        visible={showPopup}
+        onClose={() => setShowPopup(false)}
+        title={popupConfig.title}
+        message={popupConfig.message}
+        icon={popupConfig.icon}
+        iconColor={popupConfig.iconColor}
+        buttons={[
+          {
+            text: 'OK',
+            onPress: popupConfig.onConfirm,
+            style: 'default'
+          }
+        ]}
+      />
     </View>
   );
 }

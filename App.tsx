@@ -27,7 +27,6 @@ export default function App() {
   useEffect(() => {
     const loadResources = async () => {
       try {
-        // ✅ Load fonts for all icon packs
         await Font.loadAsync({
           ...Ionicons.font,
           ...MaterialIcons.font,
@@ -36,11 +35,17 @@ export default function App() {
 
         setFontsLoaded(true);
 
-        // ✅ Check login session
         const token = await AsyncStorage.getItem('auth_token');
         if (token) {
           try {
-            const response = await api.verifyToken(token);
+            // Run token verification with a timeout to avoid hanging
+            const response = await Promise.race([
+              api.verifyToken(token),
+              new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Token verification timeout')), 3000)
+              )
+            ]) as any;
+            
             if (response?.success) {
               const email =
                 response.data?.email ||
@@ -52,19 +57,20 @@ export default function App() {
               return;
             }
           } catch (err) {
-            console.log('Token verify failed', err);
+            console.log('Token verify failed or timed out', err);
+            // Clear invalid token
+            await AsyncStorage.removeItem('auth_token');
           }
         }
 
-        // fallback to login screen after splash
         setTimeout(() => {
           setAppState('login');
-        }, 1800);
+        }, 1000); // Reduced from 1800ms to 1000ms
       } catch (error) {
         console.log('Error initializing app:', error);
         setTimeout(() => {
           setAppState('login');
-        }, 1800);
+        }, 1000); // Reduced from 1800ms to 1000ms
       }
     };
 
@@ -106,12 +112,11 @@ export default function App() {
     }
   };
 
-  // Wait for fonts
   if (!fontsLoaded) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <Image
-          source={require('./assets/logo.png')}
+          source={require('./assets/icon.png')}
           style={{ width: 100, height: 100 }}
           resizeMode="contain"
         />
@@ -126,7 +131,7 @@ export default function App() {
         <View style={styles.content}>
           <View style={styles.logoContainer}>
             <Image
-              source={require('./assets/logo.png')}
+              source={require('./assets/icon.png')}
               style={styles.logo}
               resizeMode="contain"
             />
@@ -191,7 +196,7 @@ const styles = StyleSheet.create({
     width: width * 0.35,
     height: width * 0.35,
     justifyContent: 'center',
-    marginBottom: -(height * 0.03),
+    marginBottom: -(height * 0.02),
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

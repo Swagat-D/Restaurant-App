@@ -13,6 +13,10 @@ const { width, height } = Dimensions.get('window');
 
 interface NavbarProps {
   userEmail: string;
+  userData?: {
+    name?: string;
+    email?: string;
+  };
   onLogout: () => void;
   title?: string;
   showProfile?: boolean;
@@ -37,15 +41,30 @@ const formatEmail = (email: string) => {
   return name.charAt(0).toUpperCase() + name.slice(1);
 };
 
+const formatUserName = (userData?: { name?: string; email?: string }, userEmail?: string) => {
+  if (userData?.name) {
+    // Extract first name from full name
+    const firstName = userData.name.split(' ')[0];
+    return firstName.charAt(0).toUpperCase() + firstName.slice(1);
+  }
+  
+  if (userEmail) {
+    return formatEmail(userEmail);
+  }
+  
+  return 'User';
+};
+
 export default function Navbar({ 
   userEmail, 
+  userData,
   onLogout, 
   title, 
   showProfile = true,
   onProfilePress 
 }: NavbarProps) {
   const greeting = getGreeting();
-  const userName = formatEmail(userEmail);
+  const userName = formatUserName(userData, userEmail);
 
   const handleProfilePress = () => {
     if (onProfilePress) {
@@ -64,7 +83,7 @@ export default function Navbar({
             ) : (
               <>
                 <Text style={styles.greetingText}>{greeting},</Text>
-                <Text style={styles.userNameText}>Swagat! </Text>
+                <Text style={styles.userNameText}>{userName}!</Text>
               </>
             )}
           </View>

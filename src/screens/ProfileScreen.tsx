@@ -25,6 +25,7 @@ const responsiveFontSize = (size: number) => {
 interface ProfileScreenProps {
   onBack?: () => void;
   userEmail?: string;
+  onLogout?: () => void;
 }
 
 interface EmployeeData {
@@ -37,9 +38,10 @@ interface EmployeeData {
   resname: string;
   joinDate: string;
   shift: string;
+  createdAt?: string;
 }
 
-export default function ProfileScreen({ onBack, userEmail }: ProfileScreenProps) {
+export default function ProfileScreen({ onBack, userEmail, onLogout }: ProfileScreenProps) {
   const [employee, setEmployee] = useState<EmployeeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -245,7 +247,12 @@ export default function ProfileScreen({ onBack, userEmail }: ProfileScreenProps)
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Join Date</Text>
               <Text style={styles.detailValue}>
-                {new Date(employee.joinDate).toLocaleDateString()}
+                {employee.createdAt 
+                  ? new Date(employee.createdAt).toLocaleDateString()
+                  : employee.joinDate 
+                    ? new Date(employee.joinDate).toLocaleDateString()
+                    : 'Not available'
+                }
               </Text>
             </View>
           </View>
@@ -273,6 +280,20 @@ export default function ProfileScreen({ onBack, userEmail }: ProfileScreenProps)
             </View>
           </View>
         )}
+
+        {/* Logout Section */}
+        <View style={styles.section}>
+          <TouchableOpacity 
+            style={styles.logoutCard} 
+            onPress={onLogout}
+            activeOpacity={0.7}
+          >
+            <View style={styles.logoutContent}>
+              <Ionicons name="log-out-outline" size={24} color="#D32F2F" />
+              <Text style={styles.logoutButtonText}>Logout</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </View>
   );
@@ -534,5 +555,28 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     backgroundColor: '#CCCCCC',
+  },
+  logoutCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  logoutContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: '#FFF5F5',
+  },
+  logoutButtonText: {
+    fontSize: responsiveFontSize(16),
+    color: '#D32F2F',
+    fontWeight: '600',
+    marginLeft: 12,
   },
 });

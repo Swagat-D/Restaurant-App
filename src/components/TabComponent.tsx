@@ -19,10 +19,17 @@ interface TabComponentProps {
   onTabChange?: (tabIndex: number) => void;
   onNewOrder?: () => void;
   onNavigateToTables?: () => void;
+  currentTab?: number;
 }
 
-export default function TabComponent({ onTabChange, onNewOrder, onNavigateToTables }: TabComponentProps) {
-  const [activeTab, setActiveTab] = useState(0);
+export default function TabComponent({ onTabChange, onNewOrder, onNavigateToTables, currentTab = 0 }: TabComponentProps) {
+  const [activeTab, setActiveTab] = useState(currentTab);
+
+  React.useEffect(() => {
+    if (currentTab !== activeTab) {
+      setActiveTab(currentTab);
+    }
+  }, [currentTab]);
 
   const tabs = [
     { id: 0, title: 'Overview', iconActive: 'home', iconInactive: 'home-outline' },
@@ -112,6 +119,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 15,
     marginTop: -10,
+    
   },
   tab: {
     flex: 1,
@@ -121,6 +129,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: width * 0.02,
     borderRadius: 16,
     minHeight: height * 0.055,
+    marginBottom: 10,
   },
   activeTab: {
     backgroundColor: '#FFFFFF',
