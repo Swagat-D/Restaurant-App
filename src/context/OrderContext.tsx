@@ -82,12 +82,34 @@ export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
 
   // Helper function to normalize order data for client compatibility
   const normalizeOrder = (order: any): Order => {
+    // Fix timestamp handling with proper timezone conversion
+    let timestamp: Date;
+    
+    // Try different timestamp fields that might be returned from API
+    if (order.createdAt) {
+      timestamp = new Date(order.createdAt);
+    } else if (order.orderDate) {
+      timestamp = new Date(order.orderDate);
+    } else if (order.updatedAt) {
+      timestamp = new Date(order.updatedAt);
+    } else if (order.timestamp) {
+      timestamp = new Date(order.timestamp);
+    } else {
+      // For new orders, use current time
+      timestamp = new Date();
+    }
+    
+    // Validate the timestamp and fix invalid dates
+    if (isNaN(timestamp.getTime())) {
+      timestamp = new Date();
+    }
+
     return {
       ...order,
       id: order._id,
       orderNumber: order.orderid,
       total: order.totalAmount,
-      timestamp: new Date(order.orderDate),
+      timestamp: timestamp,
       items: order.items.map((item: any) => ({
         ...item,
         id: item._id,

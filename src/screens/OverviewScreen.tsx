@@ -115,7 +115,7 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
   const todayOrders = orders.filter(order => {
     const today = new Date().toDateString();
     const orderDate = order.timestamp ? order.timestamp.toDateString() : new Date(order.orderDate || Date.now()).toDateString();
-    return orderDate === today; // Include ALL orders of today
+    return orderDate === today;
   });
 
   // Filter out cancelled orders for revenue calculation
@@ -265,7 +265,30 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
         </View>
         <View style={styles.ordersList}>
           {todayOrders.slice(0, 5).map((order) => {
-            const timeAgo = order.timestamp ? Math.floor((Date.now() - order.timestamp.getTime()) / (1000 * 60)) : 0;
+            let timeDisplay = 'Just now';
+            
+            if (order.timestamp) {
+              const now = Date.now();
+              const orderTime = order.timestamp.getTime();
+              
+              if (!isNaN(orderTime) && orderTime > 0) {
+                const timeAgo = Math.floor((now - orderTime) / (1000 * 60));
+                
+                if (timeAgo < 1) {
+                  timeDisplay = 'Just now';
+                } else if (timeAgo < 60) {
+                  timeDisplay = `${timeAgo} min ago`;
+                } else if (timeAgo < 1440) {
+                  const hours = Math.floor(timeAgo / 60);
+                  const minutes = timeAgo % 60;
+                  timeDisplay = minutes > 0 ? `${hours}h ${minutes}m ago` : `${hours}h ago`;
+                } else {
+                  const days = Math.floor(timeAgo / 1440);
+                  timeDisplay = `${days} day${days > 1 ? 's' : ''} ago`;
+                }
+              }
+            }
+            
             return (
               <RecentOrder 
                 key={order.id}
@@ -274,7 +297,7 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
                 items={order.items?.length || 0} 
                 amount={`₹${(order.total || 0).toFixed(0)}`} 
                 status={order.status as 'pending' | 'preparing' | 'ready' | 'served' | 'done' | 'cancelled'} 
-                time={`${timeAgo} min ago`} 
+                time={timeDisplay} 
               />
             );
           })}
@@ -317,7 +340,30 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
               data={todayOrders}
               keyExtractor={(item) => item.id || Math.random().toString()}
               renderItem={({ item }) => {
-                const timeAgo = item.timestamp ? Math.floor((Date.now() - item.timestamp.getTime()) / (1000 * 60)) : 0;
+                let timeDisplay = 'Just now';
+                
+                if (item.timestamp) {
+                  const now = Date.now();
+                  const orderTime = item.timestamp.getTime();
+                  
+                  if (!isNaN(orderTime) && orderTime > 0) {
+                    const timeAgo = Math.floor((now - orderTime) / (1000 * 60));
+                    
+                    if (timeAgo < 1) {
+                      timeDisplay = 'Just now';
+                    } else if (timeAgo < 60) {
+                      timeDisplay = `${timeAgo} min ago`;
+                    } else if (timeAgo < 1440) {
+                      const hours = Math.floor(timeAgo / 60);
+                      const minutes = timeAgo % 60;
+                      timeDisplay = minutes > 0 ? `${hours}h ${minutes}m ago` : `${hours}h ago`;
+                    } else {
+                      const days = Math.floor(timeAgo / 1440);
+                      timeDisplay = `${days} day${days > 1 ? 's' : ''} ago`;
+                    }
+                  }
+                }
+                
                 return (
                   <View style={styles.modalOrderItem}>
                     <RecentOrder 
@@ -326,7 +372,7 @@ export default function OverviewScreen({ onNewOrder, onNavigateToTables }: Overv
                       items={item.items?.length || 0} 
                       amount={`₹${(item.total || 0).toFixed(0)}`} 
                       status={item.status as 'pending' | 'preparing' | 'ready' | 'served' | 'done' | 'cancelled'} 
-                      time={`${timeAgo} min ago`} 
+                      time={timeDisplay} 
                     />
                   </View>
                 );
