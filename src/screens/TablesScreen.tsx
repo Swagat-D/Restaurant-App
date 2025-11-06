@@ -77,6 +77,7 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
   const [editedCustomerName, setEditedCustomerName] = useState('');
   const [editedCustomerPhone, setEditedCustomerPhone] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchTables();
@@ -140,7 +141,21 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
           status: (table.status || 'available').toString()
         }));
 
-        setTables(formattedTables);
+        // Remove duplicates based on table number/name to prevent duplicate rendering
+        const uniqueTables = formattedTables.filter((table, index, self) => {
+          // Find the first occurrence of a table with the same number or name
+          const firstOccurrenceIndex = self.findIndex(t => 
+            t.number === table.number || t.name === table.name
+          );
+          // Keep only if this is the first occurrence
+          return index === firstOccurrenceIndex;
+        });
+
+        console.log('Total tables from API:', formattedTables.length);
+        console.log('Unique tables after deduplication:', uniqueTables.length);
+        console.log('Table numbers:', uniqueTables.map(t => t.number));
+
+        setTables(uniqueTables);
         setMessage(null);
       } else {
         setMessage({ type: 'error', text: response?.message || 'Failed to load tables' });
@@ -195,6 +210,7 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
     setEditingOrder(order);
     setEditedCustomerName(order.customerName || '');
     setEditedCustomerPhone(order.customerPhone || '');
+    setSearchQuery(''); // Clear search when opening modal
     
     // Initialize edited items with current order items
     const initialItems: { [key: string]: number } = {};
@@ -405,7 +421,6 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
 
     return (
       <TouchableOpacity
-        key={table.id}
         style={[
           styles.tableCard,
           displayStatus === 'occupied' && styles.tableCardOccupied,
@@ -495,7 +510,17 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Restaurant Tables</Text>
             <View style={styles.tablesGrid}>
-              {tables.filter(table => getTableDisplayStatus(table) === 'occupied').map(renderTableCard)}
+              {tables
+                .filter(table => getTableDisplayStatus(table) === 'occupied')
+                .map((table, index) => {
+                  console.log(`Rendering table ${index}: ${table.number} (ID: ${table.id})`);
+                  return (
+                    <View key={`table-${table.id}-${table.number}`}>
+                      {renderTableCard(table)}
+                    </View>
+                  );
+                })
+              }
             </View>
             {tables.filter(table => getTableDisplayStatus(table) === 'occupied').length === 0 && (
               <View style={styles.emptyState}>
@@ -625,7 +650,7 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
             <View style={styles.placeholder} />
           </View>
 
-          <ScrollView style={styles.modalContent}>
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
             {/* Customer Info */}
             <View style={styles.customerInfoSection}>
               <Text style={styles.sectionTitle}>Customer Information</Text>
@@ -695,6 +720,19 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
             {/* Add New Items */}
             <View style={styles.addItemsSection}>
               <Text style={styles.sectionTitle}>Add New Items</Text>
+              
+              {/* Search Bar */}
+              <View style={styles.searchContainer}>
+                <Ionicons name="search" size={20} color="#666666" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search menu items..."
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  clearButtonMode="while-editing"
+                />
+              </View>
+
               {menuItems.length === 0 ? (
                 <View style={styles.menuLoadingContainer}>
                   <Text style={styles.noItemsText}>Loading menu items...</Text>
@@ -706,67 +744,117 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
                   </TouchableOpacity>
                 </View>
               ) : (
-                menuItems
-                  .filter(item => !editingOrder?.items.some((orderItem: any) => {
-                    const orderItemId = typeof orderItem.menuid === 'string' 
-                      ? orderItem.menuid 
-                      : (orderItem.menuid?._id || orderItem.id || orderItem._id);
-                    return orderItemId === item._id;
-                  }))
-                  .map((item) => {
-                    const currentQty = editedItems[item._id] || 0;
-                    
-                    if (currentQty === 0) {
-                      return (
-                        <TouchableOpacity
-                          key={item._id}
-                          style={styles.addItemRow}
-                          onPress={() => adjustItemQuantity(item._id, 1)}
-                        >
-                          <View style={styles.addItemInfo}>
-                            <Text style={styles.addItemName}>{item.name}</Text>
-                            <Text style={styles.addItemDescription}>{item.description || 'No description'}</Text>
-                            <Text style={styles.addItemPrice}>₹{item.price}</Text>
-                          </View>
-                          <Ionicons name="add-circle-outline" size={24} color="#2C2C2C" />
-                        </TouchableOpacity>
-                      );
-                    } else {
-                      return (
-                        <View key={item._id} style={styles.editItemContainer}>
-                          <View style={styles.editItemRow}>
-                            <View style={styles.editItemInfo}>
-                              <Text style={styles.editItemName}>{item.name}</Text>
-                              <Text style={styles.editItemPrice}>₹{(item.price * currentQty).toFixed(0)} (₹{item.price} each)</Text>
+                <View style={styles.menuItemsContainer}>
+                  <ScrollView 
+                    style={styles.menuItemsScrollView}
+                    showsVerticalScrollIndicator={true}
+                    nestedScrollEnabled={true}
+                  >
+                    {menuItems
+                      .filter(item => {
+                        // Filter by search query
+                        const matchesSearch = searchQuery === '' || 
+                          item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                          (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()));
+                        
+                        // Filter out items already in the order
+                        const notInOrder = !editingOrder?.items.some((orderItem: any) => {
+                          const orderItemId = typeof orderItem.menuid === 'string' 
+                            ? orderItem.menuid 
+                            : (orderItem.menuid?._id || orderItem.id || orderItem._id);
+                          return orderItemId === item._id;
+                        });
+                        
+                        return matchesSearch && notInOrder;
+                      })
+                      .map((item) => {
+                        const currentQty = editedItems[item._id] || 0;
+                        
+                        if (currentQty === 0) {
+                          return (
+                            <TouchableOpacity
+                              key={item._id}
+                              style={styles.addItemRow}
+                              onPress={() => adjustItemQuantity(item._id, 1)}
+                            >
+                              <View style={styles.addItemInfo}>
+                                <Text style={styles.addItemName}>{item.name}</Text>
+                                <Text style={styles.addItemDescription}>{item.description || 'No description'}</Text>
+                                <View style={styles.addItemPriceRow}>
+                                  <Text style={styles.addItemPrice}>₹{item.price}</Text>
+                                  {item.isVegetarian && (
+                                    <View style={styles.vegIndicator}>
+                                      <Text style={styles.vegText}>VEG</Text>
+                                    </View>
+                                  )}
+                                </View>
+                              </View>
+                              <Ionicons name="add-circle-outline" size={24} color="#2C2C2C" />
+                            </TouchableOpacity>
+                          );
+                        } else {
+                          return (
+                            <View key={item._id} style={styles.editItemContainer}>
+                              <View style={styles.editItemRow}>
+                                <View style={styles.editItemInfo}>
+                                  <Text style={styles.editItemName}>{item.name}</Text>
+                                  <Text style={styles.editItemPrice}>₹{(item.price * currentQty).toFixed(0)} (₹{item.price} each)</Text>
+                                </View>
+                                <View style={styles.quantityControls}>
+                                  <TouchableOpacity
+                                    style={styles.quantityButton}
+                                    onPress={() => adjustItemQuantity(item._id, -1)}
+                                  >
+                                    <Ionicons name="remove" size={16} color="#FFFFFF" />
+                                  </TouchableOpacity>
+                                  <Text style={styles.quantityText}>{currentQty}</Text>
+                                  <TouchableOpacity
+                                    style={styles.quantityButton}
+                                    onPress={() => adjustItemQuantity(item._id, 1)}
+                                  >
+                                    <Ionicons name="add" size={16} color="#FFFFFF" />
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                              <TextInput
+                                style={styles.instructionsInput}
+                                placeholder="Add special instructions (optional)"
+                                value={editedItemInstructions[item._id] || ''}
+                                onChangeText={(text) => updateItemInstructions(item._id, text)}
+                                multiline
+                                numberOfLines={2}
+                              />
                             </View>
-                            <View style={styles.quantityControls}>
-                              <TouchableOpacity
-                                style={styles.quantityButton}
-                                onPress={() => adjustItemQuantity(item._id, -1)}
-                              >
-                                <Ionicons name="remove" size={16} color="#FFFFFF" />
-                              </TouchableOpacity>
-                              <Text style={styles.quantityText}>{currentQty}</Text>
-                              <TouchableOpacity
-                                style={styles.quantityButton}
-                                onPress={() => adjustItemQuantity(item._id, 1)}
-                              >
-                                <Ionicons name="add" size={16} color="#FFFFFF" />
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                          <TextInput
-                            style={styles.instructionsInput}
-                            placeholder="Add special instructions (optional)"
-                            value={editedItemInstructions[item._id] || ''}
-                            onChangeText={(text) => updateItemInstructions(item._id, text)}
-                            multiline
-                            numberOfLines={2}
-                          />
-                        </View>
-                      );
+                          );
+                        }
+                      })
                     }
-                  })
+                    {menuItems
+                      .filter(item => {
+                        const matchesSearch = searchQuery === '' || 
+                          item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                          (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()));
+                        
+                        const notInOrder = !editingOrder?.items.some((orderItem: any) => {
+                          const orderItemId = typeof orderItem.menuid === 'string' 
+                            ? orderItem.menuid 
+                            : (orderItem.menuid?._id || orderItem.id || orderItem._id);
+                          return orderItemId === item._id;
+                        });
+                        
+                        return matchesSearch && notInOrder;
+                      }).length === 0 && (
+                        <View style={styles.noSearchResults}>
+                          <Ionicons name="search-outline" size={48} color="#CCCCCC" />
+                          <Text style={styles.noSearchResultsText}>
+                            {searchQuery ? `No items found for "${searchQuery}"` : 'All menu items are already in the order'}
+                          </Text>
+                        </View>
+                      )}
+                  </ScrollView>
+                </View>
               )}
             </View>
 
@@ -782,7 +870,6 @@ export default function TablesScreen({ onBack, onNewOrder }: TablesScreenProps) 
               </Text>
             </View>
 
-            {/* Update Button */}
             <TouchableOpacity
               style={[styles.updateButton, isUpdating && styles.disabledButton]}
               onPress={handleUpdateOrder}
@@ -1070,6 +1157,7 @@ const styles = StyleSheet.create({
   modalContent: {
     flex: 1,
     padding: width * 0.05,
+    marginBottom: height * 0.02,
   },
   emptyOrdersState: {
     backgroundColor: '#FFFFFF',
@@ -1230,7 +1318,7 @@ const styles = StyleSheet.create({
   },
   customerInput: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#000',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1262,7 +1350,7 @@ const styles = StyleSheet.create({
   },
   instructionsInput: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: '#000',
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -1379,5 +1467,77 @@ const styles = StyleSheet.create({
   menuLoadingContainer: {
     alignItems: 'center',
     padding: 20,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9F9F9',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: responsiveFontSize(14),
+    color: '#2C2C2C',
+    paddingVertical: 4,
+  },
+  menuItemsContainer: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    backgroundColor: '#FAFAFA',
+  },
+  menuItemsScrollView: {
+    maxHeight: height * 0.4, // Limit height to 40% of screen
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  addItemPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  vegIndicator: {
+    backgroundColor: '#22C55E',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  vegText: {
+    fontSize: responsiveFontSize(9),
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  noSearchResults: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  noSearchResultsText: {
+    fontSize: responsiveFontSize(14),
+    color: '#666666',
+    textAlign: 'center',
+    marginTop: 16,
+    paddingHorizontal: 20,
+  },
+  modalFooter: {
+    backgroundColor: '#FFFFFF',
+    paddingTop: 15,
+    paddingBottom: 10,
+    paddingHorizontal: width * 0.05,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });

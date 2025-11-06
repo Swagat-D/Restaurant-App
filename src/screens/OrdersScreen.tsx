@@ -287,9 +287,7 @@ export default function OrdersScreen() {
 
   // Load today's orders by default
   React.useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    setSelectedDate(today);
-    fetchOrdersByDate(today);
+    refreshOrders();
   }, []);
 
   const getFilteredOrders = () => {
@@ -303,8 +301,11 @@ export default function OrdersScreen() {
 
   const filteredOrders = getFilteredOrders();
 
-  // Update local orders when context orders change
   React.useEffect(() => {
+    console.log('OrdersScreen: Orders by status:', orders.reduce((acc, order) => {
+      acc[order.status] = (acc[order.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>));
     setLocalOrders(orders);
   }, [orders]);
 

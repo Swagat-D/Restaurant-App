@@ -110,15 +110,18 @@ export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
       setError(null);
       const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
+        console.log('OrderContext: No auth token found');
         setError('Authentication required');
         return;
       }
 
       const response = await api.getAllOrders(token);
+      console.log('OrderContext: API response:', response);
       if (response?.success && response.orders) {
         const normalizedOrders = response.orders.map(normalizeOrder);
         setOrders(normalizedOrders);
       } else {
+        console.log('OrderContext: Failed response:', response?.message);
         setError(response?.message || 'Failed to load orders');
         setOrders([]);
       }
@@ -344,7 +347,8 @@ export const OrderProvider: React.FC<OrderProviderProps> = ({ children }) => {
   };
 
   const getActiveOrders = () => {
-    return orders.filter(order => !['served', 'cancelled', 'done'].includes(order.status));
+    // Changed to match OrdersScreen logic - only exclude cancelled and done orders
+    return orders.filter(order => !['cancelled', 'done'].includes(order.status));
   };
 
   // Load orders on mount

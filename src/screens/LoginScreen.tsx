@@ -10,6 +10,7 @@ import {
   Platform,
   StatusBar,
   ScrollView,
+  Image,
 } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -59,7 +60,8 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
         if (token) {
           // store token and notify app
           await AsyncStorage.setItem('auth_token', token);
-          setMessage({ type: 'success', text: response.message || 'Successfully signed in' });
+          setMessage(null); // Clear any error messages immediately
+          setHasOTPError(false); // Clear error state
           onOTPVerify(token);
         } else {
           setHasOTPError(true); // Set error state
@@ -194,6 +196,13 @@ export default function LoginScreen({ onEmailVerify, onOTPVerify }: LoginScreenP
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
+            <View style={styles.logoContainer}>
+              <Image 
+                source={require('../../assets/icon.png')} 
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
             <Text style={styles.title}>Welcome Buddy !</Text>
             <Text style={styles.subtitle}>
               {showOTP ? 'Let\'s get back to work 😉' : 'Give us a moment to verify your identity'}
@@ -327,6 +336,15 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: height * 0.04,
     alignItems: 'center',
+  },
+  logoContainer: {
+    marginBottom: height * 0.01,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: width * 0.35,
+    height: width * 0.35,
   },
   title: {
     fontSize: responsiveFontSize(26),

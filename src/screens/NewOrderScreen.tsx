@@ -733,40 +733,46 @@ export default function NewOrderScreen({ onBack }: NewOrderScreenProps) {
                 </TouchableOpacity>
               </View>
             ) : (
-              allTablesForDisplay.map((table) => (
-                <TouchableOpacity
-                  key={table.id}
-                  style={[
-                    styles.tableOption,
-                    !table.isSelectable && styles.tableOptionDisabled
-                  ]}
-                  onPress={() => handleTableSelect(table)}
-                  disabled={!table.isSelectable}
-                >
-                  <View style={styles.tableOptionContent}>
-                    <Text style={[
-                      styles.tableOptionText,
-                      !table.isSelectable && styles.tableOptionTextDisabled
-                    ]}>
-                      {table.number || table.name}
-                    </Text>
-                    <Text style={styles.tableCapacity}>Capacity: {table.capacity}</Text>
-                    <Text style={[
-                      styles.tableStatus,
-                      table.status?.toLowerCase() === 'available' ? styles.statusAvailable :
-                      table.status?.toLowerCase() === 'occupied' ? styles.statusOccupied :
-                      styles.statusReserved
-                    ]}>
-                      Status: {table.status}
-                    </Text>
-                  </View>
-                  {table.isSelectable ? (
-                    <Ionicons name="checkmark-circle-outline" size={20} color="#2C2C2C" />
-                  ) : (
-                    <Ionicons name="close-circle-outline" size={20} color="#999999" />
-                  )}
-                </TouchableOpacity>
-              ))
+              <ScrollView 
+                style={styles.tableScrollContainer}
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+              >
+                {allTablesForDisplay.map((table) => (
+                  <TouchableOpacity
+                    key={table.id}
+                    style={[
+                      styles.tableOption,
+                      !table.isSelectable && styles.tableOptionDisabled
+                    ]}
+                    onPress={() => handleTableSelect(table)}
+                    disabled={!table.isSelectable}
+                  >
+                    <View style={styles.tableOptionContent}>
+                      <Text style={[
+                        styles.tableOptionText,
+                        !table.isSelectable && styles.tableOptionTextDisabled
+                      ]}>
+                        {table.number || table.name}
+                      </Text>
+                      <Text style={styles.tableCapacity}>Capacity: {table.capacity}</Text>
+                      <Text style={[
+                        styles.tableStatus,
+                        table.status?.toLowerCase() === 'available' ? styles.statusAvailable :
+                        table.status?.toLowerCase() === 'occupied' ? styles.statusOccupied :
+                        styles.statusReserved
+                      ]}>
+                        Status: {table.status}
+                      </Text>
+                    </View>
+                    {table.isSelectable ? (
+                      <Ionicons name="checkmark-circle-outline" size={20} color="#2C2C2C" />
+                    ) : (
+                      <Ionicons name="close-circle-outline" size={20} color="#999999" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             )}
           </View>
         </TouchableOpacity>
@@ -1221,6 +1227,9 @@ const styles = StyleSheet.create({
     padding: width * 0.05,
     width: width * 0.8,
     maxHeight: height * 0.6,
+  },
+  tableScrollContainer: {
+    maxHeight: height * 0.4,
   },
   tableModalTitle: {
     fontSize: responsiveFontSize(18),
